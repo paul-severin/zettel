@@ -530,7 +530,7 @@ function renderReady(){
         <h3 style="margin-top:14px;">Runde: ${esc(sp.name)}</h3>
         <p class="hint">${esc(sp.desc)}</p>
       </div>
-      <button class="${accent}" onclick="startTurn()">Handy übergeben &amp; Start (${g.timeLeft}s)</button>
+      <button class="${accent}" onclick="startTurn()">Start (${g.timeLeft}s)</button>
       <p class="small-note">Gib das Handy an ${esc(activePlayer())}. Erst dann auf Start tippen!</p>
     </div>
     ${miniScore()}
