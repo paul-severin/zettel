@@ -163,6 +163,7 @@
   .topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;}
   .reset{background:transparent;border:1px solid var(--line);color:var(--muted);width:auto;font-size:12px;padding:7px 11px;box-shadow:none;}
   .small-note{color:var(--muted);font-size:12px;text-align:center;margin-top:8px;}
+  .testbtn{background:transparent;border:none;color:var(--muted);font-size:12px;width:auto;display:block;margin:26px auto 0;text-decoration:underline;box-shadow:none;opacity:.55;}
 </style>
 </head>
 <body>
@@ -299,6 +300,7 @@ function renderLobby(){
 
     <button class="btn-red" onclick="createTeams()" ${canTeams?"":"disabled"}>Teams erstellen</button>
     ${canTeams?"":`<p class="small-note">Mindestens ${minPlayers} Spieler nötig (2 pro Team).</p>`}
+    <button class="testbtn" onclick="loadTestData()">🧪 Testdaten (4 Spieler, 3 Wörter, Timer 5s)</button>
   `;
 
   // keep settings in sync live
@@ -313,6 +315,16 @@ function renderLobby(){
 }
 function removePlayer(i){ state.players.splice(i,1); save(); render(); }
 function goAddPlayer(){ state.screen="addPlayer"; state.err=""; save(); render(); }
+
+// quick test setup: 4 players x 3 words, 3 words/player, 5s timer
+function loadTestData(){
+  state.settings.wordsPerPlayer = 3;
+  state.settings.timerSeconds = 5;
+  const w = ["Apfel","Banane","Kaktus","Drache","Eimer","Fahrrad","Gitarre","Hammer","Igel","Jacke","Kerze","Lampe"];
+  const names = ["Anna","Ben","Clara","David"];
+  state.players = names.map((name,i)=>({ name, words: w.slice(i*3, i*3+3) }));
+  save(); render();
+}
 
 /* ----- add player form ----- */
 function renderAddPlayer(){
@@ -754,7 +766,7 @@ function render(){
 
 /* expose handlers used in inline onclick */
 Object.assign(window,{
-  confirmReset, removePlayer, goAddPlayer, cancelAdd, savePlayer,
+  confirmReset, removePlayer, goAddPlayer, cancelAdd, savePlayer, loadTestData,
   createTeams, startGame, startTurn, guessed, skipWord, nextTurn,
   nextSubphase
 });
