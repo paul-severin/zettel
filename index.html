@@ -247,7 +247,6 @@ function header(){
       ${showReset?`<button class="reset" onclick="confirmReset()">Neues Spiel</button>`:`<div></div>`}
     </div>
     <div class="brand">ZETTEL</div>
-    <div class="brand-sub">Ein Handy · rumreichen · raten</div>
   `;
 }
 function confirmReset(){
@@ -289,7 +288,6 @@ function renderLobby(){
           <input type="number" id="setWords" min="1" max="12" value="${s.wordsPerPlayer}" inputmode="numeric" />
         </div>
       </div>
-      <p class="hint">Werden für alle Spieler verwendet. Vor dem Hinzufügen von Spielern einstellen.</p>
     </div>
 
     <div class="panel">
