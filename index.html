@@ -593,10 +593,9 @@ function renderPlaying(){
       <div class="bar"><i id="timerBar" style="width:${(g.timeLeft/state.settings.timerSeconds)*100}%"></i></div>
     </div>
     <div class="wordcard"><div class="w" id="curWord">${esc(g.currentWord||"–")}</div></div>
-    <div class="row">
-      <button class="btn-amber" onclick="skipWord()">Skip ⤼</button>
-      <button class="btn-green" onclick="guessed()">Erraten ✓</button>
-    </div>
+    <button class="btn-green" onclick="guessed()">Erraten ✓</button>
+    <div class="spacer"></div>
+    <button class="btn-amber" onclick="skipWord()">Skip ⤼</button>
     <p class="small-note">Erraten: <b id="gCount">${g.guessedThisTurn.length}</b> · Übrig in dieser Runde: <b>${g.pool.length}</b></p>
   `;
 }
