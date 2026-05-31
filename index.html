@@ -29,6 +29,8 @@
     color:var(--text);
     font-family:"Segoe UI",system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;
     -webkit-font-smoothing:antialiased;
+    touch-action:manipulation;          /* disables double-tap-to-zoom, keeps fast taps */
+    overscroll-behavior-y:none;
   }
   #app{
     max-width:560px;margin:0 auto;min-height:100vh;
@@ -84,6 +86,29 @@
   .x{color:var(--red);background:transparent;border:none;width:auto;font-size:18px;padding:4px 8px;line-height:1;box-shadow:none;}
 
   .err{color:#ff8197;font-size:13px;margin-top:10px;min-height:18px;line-height:1.4;}
+
+  /* per-field inline validation */
+  input.bad{border-color:var(--red)!important;box-shadow:0 0 0 3px rgba(255,46,80,.18)!important;}
+  .wordInput{margin-bottom:4px;}
+  .ferr{color:#ff8197;font-size:12px;line-height:1.35;margin:0 0 8px;}
+  .ferr:empty{margin:0 0 4px;}
+
+  /* add-player progress overview */
+  .progress{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:16px;}
+  .progress-title{font-weight:800;font-size:16px;}
+  .progress-sub{color:var(--muted);font-size:12px;margin-top:3px;line-height:1.4;}
+
+  /* portrait-only guard (neutralises auto-rotate on phones) */
+  #rotateGuard{display:none;}
+  @media (orientation:landscape) and (max-height:520px){
+    #app{display:none!important;}
+    #rotateGuard{
+      display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;
+      position:fixed;inset:0;z-index:9999;padding:30px;text-align:center;
+      background:var(--bg);color:var(--text);font-weight:700;font-size:18px;
+    }
+    #rotateGuard .ic{font-size:54px;}
+  }
 
   /* glowing team cards */
   .team-card{border-radius:18px;padding:16px;margin-bottom:14px;border:2px solid;}
@@ -141,6 +166,7 @@
 </style>
 </head>
 <body>
+<div id="rotateGuard"><div class="ic">📱↻</div><div>Bitte halte dein Handy im&nbsp;Hochformat</div></div>
 <div id="app"></div>
 
 <script>
@@ -221,7 +247,6 @@ function header(){
       ${showReset?`<button class="reset" onclick="confirmReset()">Neues Spiel</button>`:`<div></div>`}
     </div>
     <div class="brand">ZETTEL</div>
-    <div class="brand-sub">Ein Handy · rumreichen · raten</div>
   `;
 }
 function confirmReset(){
@@ -263,7 +288,6 @@ function renderLobby(){
           <input type="number" id="setWords" min="1" max="12" value="${s.wordsPerPlayer}" inputmode="numeric" />
         </div>
       </div>
-      <p class="hint">Werden für alle Spieler verwendet. Vor dem Hinzufügen von Spielern einstellen.</p>
     </div>
 
     <div class="panel">
@@ -293,56 +317,118 @@ function goAddPlayer(){ state.screen="addPlayer"; state.err=""; save(); render()
 /* ----- add player form ----- */
 function renderAddPlayer(){
   const n = state.settings.wordsPerPlayer;
+  const num = state.players.length + 1;
+  const added = state.players.map(p=>esc(p.name)).join(", ");
   const wordInputs = Array.from({length:n}).map((_,i)=>`
-    <div style="margin-bottom:9px;">
-      <input type="text" class="wordInput" data-i="${i}" placeholder="Wort ${i+1}" autocomplete="off" />
-    </div>`).join("");
+    <input type="text" class="wordInput" data-i="${i}" placeholder="Wort ${i+1}" autocomplete="off" autocapitalize="off" />
+    <div class="ferr" data-err="${i}"></div>`).join("");
 
   const app = document.getElementById("app");
   app.innerHTML = `
     ${header()}
     <div class="panel">
-      <h2>Neuer Spieler</h2>
+      <div class="progress">
+        <div class="progress-title">Spieler #${num} hinzufügen</div>
+        <div class="progress-sub">${state.players.length ? "Bereits dabei ("+state.players.length+"): "+added : "Erster Spieler – los geht's! 🎉"}</div>
+      </div>
       <label>Name</label>
       <input type="text" id="pName" placeholder="Dein Name" autocomplete="off" />
+      <div class="ferr" id="nameErr"></div>
       <div class="spacer"></div>
       <h3>${n} Wörter</h3>
-      <p class="hint" style="margin-bottom:12px;">Geheim eingeben – andere sollen nicht mitlesen 🙈. Keine Dopplungen mit bereits eingegebenen Wörtern.</p>
+      <p class="hint" style="margin-bottom:12px;">Geheim eingeben 🙈 – keine Dopplungen. Wird beim Verlassen des Feldes geprüft.</p>
       ${wordInputs}
-      <div class="err" id="addErr">${esc(state.err||"")}</div>
+      <div class="err" id="addErr"></div>
       <div class="row">
         <button class="btn-ghost" onclick="cancelAdd()">Abbrechen</button>
         <button class="btn-green" onclick="savePlayer()">Spieler speichern</button>
       </div>
     </div>
   `;
-  app.querySelector("#pName").focus();
+  // live validation on blur; clear a field's error as soon as it's edited again
+  app.querySelectorAll(".wordInput").forEach(inp=>{
+    inp.addEventListener("blur", liveValidateWords);
+    inp.addEventListener("input", ()=>clearFieldError(inp));
+  });
+  const pn = app.querySelector("#pName");
+  pn.addEventListener("blur", validateName);
+  pn.addEventListener("input", ()=>{ pn.classList.remove("bad"); const e=app.querySelector("#nameErr"); if(e) e.textContent=""; });
+  pn.focus();
 }
 function cancelAdd(){ state.screen="lobby"; state.err=""; save(); render(); }
+
+function setFieldError(inp, errEl, msg){
+  if(msg){ inp.classList.add("bad"); if(errEl) errEl.textContent = msg; }
+  else { inp.classList.remove("bad"); if(errEl) errEl.textContent = ""; }
+}
+function clearFieldError(inp){
+  inp.classList.remove("bad");
+  const errEl = document.querySelector('.ferr[data-err="'+inp.dataset.i+'"]');
+  if(errEl) errEl.textContent = "";
+}
+function validateName(){
+  const app = document.getElementById("app");
+  const pn = app.querySelector("#pName"); if(!pn) return true;
+  const errEl = app.querySelector("#nameErr");
+  const name = pn.value.trim();
+  let msg = "";
+  if(name && state.players.some(p=>norm(p.name)===norm(name))) msg = "Diesen Namen gibt es schon.";
+  setFieldError(pn, errEl, msg);
+  return !msg;
+}
+// validates all word fields against each other and the existing pool (whitespace + casing ignored)
+function liveValidateWords(){
+  const app = document.getElementById("app");
+  const inputs = [...app.querySelectorAll(".wordInput")];
+  const existing = new Set(allWords().map(norm));   // words of already-added players
+  const counts = {};
+  inputs.forEach(inp=>{ if(inp.value.trim()){ const k=norm(inp.value); counts[k]=(counts[k]||0)+1; } });
+  inputs.forEach(inp=>{
+    const errEl = app.querySelector('.ferr[data-err="'+inp.dataset.i+'"]');
+    const val = inp.value.trim();
+    let msg = "";
+    if(val){
+      const k = norm(val);
+      if(existing.has(k)) msg = "Schon von einem anderen Spieler genommen.";
+      else if(counts[k] > 1) msg = "Dieses Wort hast du doppelt.";
+    }
+    setFieldError(inp, errEl, msg);
+  });
+}
 function savePlayer(){
   const app = document.getElementById("app");
-  const name = app.querySelector("#pName").value.trim();
-  const words = Array.from(app.querySelectorAll(".wordInput")).map(i=>i.value.trim());
+  const pn = app.querySelector("#pName");
+  const inputs = [...app.querySelectorAll(".wordInput")];
+  const addErr = app.querySelector("#addErr");
+  addErr.textContent = "";
 
-  if(!name){ state.err="Bitte einen Namen eingeben."; return render(); }
-  if(state.players.some(p=>norm(p.name)===norm(name))){ state.err="Diesen Namen gibt es schon."; return render(); }
-  if(words.some(w=>!w)){ state.err="Bitte alle "+words.length+" Wörter ausfüllen."; return render(); }
+  let firstBad = null;
 
-  // duplicate check within this player's own words
-  const seen = new Map();
-  for(const w of words){
-    const k = norm(w);
-    if(seen.has(k)){ state.err=`„${w}“ hast du doppelt eingegeben.`; return render(); }
-    seen.set(k,w);
+  // name: empty or duplicate
+  if(!pn.value.trim()){ setFieldError(pn, app.querySelector("#nameErr"), "Bitte einen Namen eingeben."); firstBad = firstBad || pn; }
+  else if(!validateName()){ firstBad = firstBad || pn; }
+
+  // duplicate / pool checks for words
+  liveValidateWords();
+
+  // empty word fields
+  inputs.forEach(inp=>{
+    if(!inp.value.trim()){
+      setFieldError(inp, app.querySelector('.ferr[data-err="'+inp.dataset.i+'"]'), "Bitte ausfüllen.");
+      firstBad = firstBad || inp;
+    }
+  });
+
+  const anyBad = pn.classList.contains("bad") || inputs.some(inp=>inp.classList.contains("bad"));
+  if(firstBad || anyBad){
+    addErr.textContent = "Bitte korrigiere die markierten Felder.";
+    (firstBad || inputs.find(inp=>inp.classList.contains("bad")) || pn).focus();
+    return;   // no re-render -> all already-entered values are kept
   }
-  // duplicate check against existing pool (whitespace + casing ignored)
-  const existing = new Set(allWords().map(norm));
-  const clash = words.find(w=>existing.has(norm(w)));
-  if(clash){ state.err=`„${clash}“ wurde schon von einem anderen Spieler genommen.`; return render(); }
 
-  state.players.push({ name, words });
-  state.err="";
-  state.screen="lobby";
+  state.players.push({ name: pn.value.trim(), words: inputs.map(i=>i.value.trim()) });
+  state.err = "";
+  state.screen = "lobby";
   save(); render();
 }
 
@@ -442,7 +528,7 @@ function renderReady(){
         <h3 style="margin-top:14px;">Runde: ${esc(sp.name)}</h3>
         <p class="hint">${esc(sp.desc)}</p>
       </div>
-      <button class="${accent}" onclick="startTurn()">Handy übergeben &amp; Start (${g.timeLeft}s)</button>
+      <button class="${accent}" onclick="startTurn()">Start (${g.timeLeft}s)</button>
       <p class="small-note">Gib das Handy an ${esc(activePlayer())}. Erst dann auf Start tippen!</p>
     </div>
     ${miniScore()}
@@ -507,11 +593,9 @@ function renderPlaying(){
       <div class="bar"><i id="timerBar" style="width:${(g.timeLeft/state.settings.timerSeconds)*100}%"></i></div>
     </div>
     <div class="wordcard"><div class="w" id="curWord">${esc(g.currentWord||"–")}</div></div>
-    <div class="row">
-      <button class="btn-amber" onclick="skipWord()">Skip ⤼</button>
-      <button class="btn-green" onclick="guessed()">Erraten ✓</button>
-    </div>
-    <p class="small-note">Erraten: <b id="gCount">${g.guessedThisTurn.length}</b> · Übrig in dieser Runde: <b>${g.pool.length}</b></p>
+    <button class="btn-green" onclick="guessed()">Erraten ✓</button>
+    <div class="spacer"></div>
+    <button class="btn-amber" onclick="skipWord()">Skip ⤼</button>
   `;
 }
 function renderWordOnly(){
@@ -676,6 +760,14 @@ Object.assign(window,{
 });
 
 /* ---------- boot ---------- */
+// best-effort portrait lock (works in installed/fullscreen PWA contexts; harmless otherwise)
+try{
+  if(screen.orientation && screen.orientation.lock){
+    const p = screen.orientation.lock("portrait");
+    if(p && p.catch) p.catch(()=>{});
+  }
+}catch(e){}
+
 load();
 render();
 window.addEventListener("beforeunload", save);
