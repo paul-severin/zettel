@@ -123,6 +123,51 @@
   .member{font-size:13px;background:rgba(0,0,0,.25);border:1px solid var(--line);border-radius:999px;padding:5px 11px;}
   .member.active{font-weight:800;}
 
+  /* editable teams: drag & drop + rename */
+  .member.draggable{cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;}
+  .member.draggable::before{content:"⠿";opacity:.5;margin-right:6px;font-size:12px;letter-spacing:-2px;}
+  .member.draggable:active{cursor:grabbing;}
+  .member.dragging{opacity:.25;}
+  .member.placeholder{border-style:dashed;background:transparent;color:var(--muted);}
+  .members.editable{min-height:48px;align-content:flex-start;padding:7px;border-radius:12px;border:1px dashed transparent;transition:border-color .15s,background .15s;}
+  .members.dragover{border-color:currentColor;background:rgba(255,255,255,.05);}
+  .members .empty-hint{font-size:12px;color:var(--muted);font-style:italic;padding:6px 2px;}
+  .drag-ghost{
+    position:fixed;left:0;top:0;z-index:10000;pointer-events:none;transform:translate(-50%,-50%);
+    font-size:13px;font-weight:800;background:var(--panel2);border:1px solid var(--line);
+    border-radius:999px;padding:5px 11px;box-shadow:0 8px 22px rgba(0,0,0,.55);opacity:.96;
+  }
+  .tname-input{
+    width:100%;background:rgba(0,0,0,.18);border:1px solid var(--line);border-radius:10px;
+    font-size:18px;font-weight:800;padding:8px 10px;margin-bottom:10px;outline:none;color:inherit;
+    transition:border-color .15s,box-shadow .15s;
+  }
+  .tname-input:focus{border-color:currentColor;box-shadow:0 0 0 3px rgba(255,255,255,.08);}
+  .edit-hint{color:var(--muted);font-size:12px;text-align:center;margin:-2px 0 14px;line-height:1.45;}
+
+  /* word editor */
+  .word-edit-row{display:flex;gap:8px;align-items:center;margin-bottom:4px;}
+  .word-edit-row input{flex:1;}
+
+  /* in-game status: team color band + avatar + phase progress */
+  .gstatus{margin-bottom:16px;}
+  .gstatus-band{display:flex;align-items:center;gap:12px;border-radius:16px;padding:12px 14px;border:2px solid;}
+  .avatar{
+    width:46px;height:46px;border-radius:50%;flex:0 0 auto;display:flex;align-items:center;justify-content:center;
+    font-weight:800;font-size:21px;background:rgba(0,0,0,.32);border:2px solid currentColor;
+  }
+  .gstatus-who{min-width:0;}
+  .gstatus-name{font-size:22px;font-weight:800;line-height:1.12;word-break:break-word;}
+  .gstatus-team{font-size:13px;font-weight:700;margin-top:2px;}
+  .gstatus-phase{
+    display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px;
+    padding:8px 14px;background:var(--panel2);border:1px solid var(--line);border-radius:999px;
+  }
+  .gphase-label{font-size:13px;font-weight:700;color:var(--muted);letter-spacing:.04em;}
+  .dots{display:flex;gap:6px;align-items:center;}
+  .dots>i{width:8px;height:8px;border-radius:50%;background:var(--line);display:block;}
+  .dots>i.on{background:linear-gradient(90deg,var(--blue),#a36bff,var(--red));}
+
   .grow{flex:1;}
   .spacer{height:8px;}
   .center{text-align:center;}
@@ -333,6 +378,7 @@ function renderLobby(){
       <div id="playerList">${playersHtml}</div>
       <div class="spacer"></div>
       <button class="btn-blue" onclick="goAddPlayer()">+ Spieler hinzufügen</button>
+      ${state.players.length?`<div class="spacer"></div><button class="btn-ghost" onclick="goEditWords()">Wörter ansehen &amp; bearbeiten (${allWords().length})</button>`:""}
     </div>
 
     <button class="btn-red" onclick="createTeams()" ${canTeams?"":"disabled"}>Teams erstellen</button>
@@ -484,6 +530,72 @@ function savePlayer(){
 }
 
 /* ===================================================================
+   WORD EDITOR – view / edit / remove all entered words before start
+=================================================================== */
+function goEditWords(){ state.screen="editWords"; state.err=""; save(); render(); }
+function renderEditWords(){
+  const app = document.getElementById("app");
+  const playersHtml = state.players.map((p,pi)=>{
+    const rows = p.words.map((w,wi)=>`
+      <div class="word-edit-row">
+        <input type="text" class="wEdit" data-p="${pi}" data-w="${wi}" value="${esc(w)}" autocomplete="off" autocapitalize="off" placeholder="Wort ${wi+1}" />
+        <button class="x" onclick="removeWord(${pi},${wi})" title="Wort entfernen">✕</button>
+      </div>
+      <div class="ferr" data-perr="${pi}-${wi}"></div>`).join("");
+    return `
+      <div class="panel">
+        <h2>${esc(p.name)} <span class="pill">${p.words.length} Wörter</span></h2>
+        ${p.words.length ? rows : `<p class="hint">Keine Wörter mehr für diesen Spieler.</p>`}
+        <button class="btn-ghost btn-sm" onclick="addWord(${pi})" style="margin-top:6px;">+ Wort</button>
+      </div>`;
+  }).join("");
+
+  app.innerHTML = `
+    ${header()}
+    <h2 class="center" style="margin-bottom:6px;">Wörter bearbeiten</h2>
+    <p class="edit-hint">Tippe ein Wort an, um es zu ändern · ✕ entfernt es. Dopplungen werden markiert.</p>
+    ${state.players.length ? playersHtml : `<div class="panel"><p class="hint">Noch keine Spieler.</p></div>`}
+    <div class="err" id="editWordsErr"></div>
+    <button class="btn-green" onclick="finishEditWords()">Fertig</button>
+  `;
+  app.querySelectorAll(".wEdit").forEach(inp=>{
+    inp.addEventListener("input", e=>{
+      state.players[+inp.dataset.p].words[+inp.dataset.w] = e.target.value;
+      validateAllWords();
+    });
+  });
+  validateAllWords();
+}
+// validates every word field across all players (whitespace + casing ignored)
+function validateAllWords(){
+  const app = document.getElementById("app");
+  const inputs = [...app.querySelectorAll(".wEdit")];
+  const counts = {};
+  inputs.forEach(inp=>{ const v=inp.value.trim(); if(v){ const k=norm(v); counts[k]=(counts[k]||0)+1; } });
+  let ok = true;
+  inputs.forEach(inp=>{
+    const errEl = app.querySelector('.ferr[data-perr="'+inp.dataset.p+'-'+inp.dataset.w+'"]');
+    const v = inp.value.trim();
+    let msg = "";
+    if(!v){ msg = "Leer – bitte ausfüllen oder entfernen."; ok = false; }
+    else if(counts[norm(v)] > 1){ msg = "Dieses Wort kommt mehrfach vor."; ok = false; }
+    setFieldError(inp, errEl, msg);
+  });
+  return ok;
+}
+function removeWord(pi, wi){ state.players[pi].words.splice(wi,1); save(); render(); }
+function addWord(pi){ state.players[pi].words.push(""); save(); render(); }
+function finishEditWords(){
+  const app = document.getElementById("app");
+  if(!validateAllWords()){
+    app.querySelector("#editWordsErr").textContent = "Bitte korrigiere die markierten Wörter.";
+    return;
+  }
+  state.players.forEach(p=>{ p.words = p.words.map(w=>w.trim()); });
+  state.screen = "lobby"; state.err = ""; save(); render();
+}
+
+/* ===================================================================
    PHASE 2 – TEAMS
 =================================================================== */
 function createTeams(){
@@ -500,16 +612,21 @@ function createTeams(){
 }
 function renderTeams(){
   const [a,b] = state.teams;
+  const canStart = state.teams.every(t=>t.order.length>0);
   const app = document.getElementById("app");
   app.innerHTML = `
     ${header()}
-    <h2 class="center" style="margin-bottom:14px;">Die Teams stehen!</h2>
-    ${teamCard(a)}
-    ${teamCard(b)}
-    <button class="btn-green" onclick="startGame()">Spiel starten</button>
+    <h2 class="center" style="margin-bottom:8px;">Die Teams stehen!</h2>
+    <p class="edit-hint">Teamnamen antippen zum Umbenennen · Spieler per Drag&nbsp;&amp;&nbsp;Drop zwischen den Teams verschieben.</p>
+    ${editableTeamCard(a,0)}
+    ${editableTeamCard(b,1)}
+    <button class="btn-green" onclick="startGame()" ${canStart?"":"disabled"}>Spiel starten</button>
+    ${canStart?"":`<p class="small-note">Jedes Team braucht mindestens einen Spieler.</p>`}
     <p class="small-note">Tipp: Pro Zug rät dein eigenes Team mit, während du das Handy hältst.</p>
   `;
+  initTeamEditing();
 }
+// read-only card (used on scoreboards / Zwischenwertung)
 function teamCard(t, activeName){
   const cls = t.color==="blue"?"team-blue":"team-red";
   const cc = t.color==="blue"?"c-blue":"c-red";
@@ -519,6 +636,134 @@ function teamCard(t, activeName){
       <div class="tname ${cc}">${esc(t.name)}</div>
       <div class="members">${members}</div>
     </div>`;
+}
+// editable card shown right after random team setup
+function editableTeamCard(t, ti){
+  const cls = t.color==="blue"?"team-blue":"team-red";
+  const cc = t.color==="blue"?"c-blue":"c-red";
+  const members = t.order.length
+    ? t.order.map(n=>`<span class="member draggable" data-team="${ti}" data-name="${esc(n)}">${esc(n)}</span>`).join("")
+    : `<span class="empty-hint">Spieler hierher ziehen …</span>`;
+  return `
+    <div class="team-card ${cls}" data-team="${ti}">
+      <input class="tname-input ${cc}" data-team="${ti}" value="${esc(t.name)}" maxlength="24" aria-label="Teamname" />
+      <div class="members editable ${cc}" data-team="${ti}">${members}</div>
+    </div>`;
+}
+
+/* ----- team editing: rename + drag & drop (pointer-based, mobile-friendly) ----- */
+function initTeamEditing(){
+  const app = document.getElementById("app");
+  app.querySelectorAll(".tname-input").forEach(inp=>{
+    inp.addEventListener("input", e=>{ state.teams[+inp.dataset.team].name = e.target.value; });
+    inp.addEventListener("change", commitTeamName);
+    inp.addEventListener("blur", commitTeamName);
+  });
+  app.querySelectorAll(".member.draggable").forEach(chip=>{
+    chip.addEventListener("pointerdown", onMemberPointerDown);
+  });
+}
+function commitTeamName(e){
+  const inp = e.target, ti = +inp.dataset.team;
+  let v = inp.value.trim();
+  if(!v){ v = ti===0 ? "Team Blau" : "Team Rot"; inp.value = v; }
+  state.teams[ti].name = v; save();
+}
+
+let drag = null;
+function onMemberPointerDown(e){
+  if(e.pointerType==="mouse" && e.button!==0) return;
+  const chip = e.currentTarget;
+  drag = {
+    chip, name:chip.dataset.name, fromTeam:+chip.dataset.team,
+    startX:e.clientX, startY:e.clientY,
+    started:false, ghost:null, placeholder:null, zone:null, toTeam:null, index:0
+  };
+  window.addEventListener("pointermove", onMemberPointerMove, {passive:false});
+  window.addEventListener("pointerup", onMemberPointerUp);
+  window.addEventListener("pointercancel", onMemberPointerUp);
+}
+function onMemberPointerMove(e){
+  if(!drag) return;
+  const dx = e.clientX-drag.startX, dy = e.clientY-drag.startY;
+  if(!drag.started){
+    if(dx*dx+dy*dy < 36) return;   // ~6px threshold before a drag begins
+    startMemberDrag();
+  }
+  e.preventDefault();
+  drag.ghost.style.left = e.clientX+"px";
+  drag.ghost.style.top  = e.clientY+"px";
+  drag.ghost.style.display = "none";
+  const under = document.elementFromPoint(e.clientX, e.clientY);
+  drag.ghost.style.display = "";
+  const zone = under ? under.closest(".members.editable") : null;
+  updateDropTarget(zone, e.clientX, e.clientY);
+}
+function startMemberDrag(){
+  drag.started = true;
+  drag.chip.classList.add("dragging");
+  const ghost = document.createElement("div");
+  ghost.className = "drag-ghost";
+  ghost.textContent = drag.name;
+  document.body.appendChild(ghost);
+  drag.ghost = ghost;
+  const ph = document.createElement("span");
+  ph.className = "member placeholder";
+  ph.textContent = drag.name;
+  drag.placeholder = ph;
+}
+function updateDropTarget(zone, x, y){
+  document.querySelectorAll(".members.dragover").forEach(z=>{ if(z!==zone) z.classList.remove("dragover"); });
+  if(!zone){
+    if(drag.placeholder.parentNode) drag.placeholder.remove();
+    drag.zone = null; drag.toTeam = null; return;
+  }
+  zone.classList.add("dragover");
+  const hint = zone.querySelector(".empty-hint"); if(hint) hint.remove();
+  const idx = getDropIndex(zone, x, y);
+  drag.zone = zone; drag.toTeam = +zone.dataset.team; drag.index = idx;
+  const chips = [...zone.querySelectorAll(".member:not(.dragging):not(.placeholder)")];
+  if(idx >= chips.length) zone.appendChild(drag.placeholder);
+  else zone.insertBefore(drag.placeholder, chips[idx]);
+}
+function getDropIndex(zone, x, y){
+  const chips = [...zone.querySelectorAll(".member:not(.dragging):not(.placeholder)")];
+  if(chips.length===0) return 0;
+  let best=0, bestD=Infinity, after=false;
+  chips.forEach((c,i)=>{
+    const r = c.getBoundingClientRect();
+    const cx = r.left+r.width/2, cy = r.top+r.height/2;
+    const d = (cx-x)**2 + (cy-y)**2;
+    if(d < bestD){ bestD = d; best = i; after = (y > r.bottom) || (y >= r.top && x > cx); }
+  });
+  return after ? best+1 : best;
+}
+function onMemberPointerUp(){
+  window.removeEventListener("pointermove", onMemberPointerMove);
+  window.removeEventListener("pointerup", onMemberPointerUp);
+  window.removeEventListener("pointercancel", onMemberPointerUp);
+  if(!drag) return;
+  const d = drag; drag = null;
+  if(d.ghost) d.ghost.remove();
+  if(d.placeholder && d.placeholder.parentNode) d.placeholder.remove();
+  document.querySelectorAll(".members.dragover").forEach(z=>z.classList.remove("dragover"));
+  if(d.chip) d.chip.classList.remove("dragging");
+  if(!d.started) return;                 // it was just a tap
+  if(d.toTeam!=null){ moveMember(d.name, d.fromTeam, d.toTeam, d.index); save(); }
+  render();                              // rebuild a clean DOM either way
+}
+// index is relative to the target team WITHOUT the dragged member (placeholder excluded it already)
+function moveMember(name, fromTeam, toTeam, toIndex){
+  const from = state.teams[fromTeam].order;
+  const fi = from.indexOf(name);
+  if(fi < 0) return;
+  from.splice(fi, 1);
+  const to = state.teams[toTeam].order;
+  toIndex = Math.max(0, Math.min(toIndex, to.length));
+  to.splice(toIndex, 0, name);
+  state.teams.forEach(t=>{
+    t.pointer = t.order.length ? Math.min(Math.max(0, t.pointer||0), t.order.length-1) : 0;
+  });
 }
 
 /* ===================================================================
@@ -554,11 +799,24 @@ function renderGame(){
 function gameStatusbar(){
   const g = state.game;
   const t = curTeam();
-  const chipCls = t.color==="blue"?"blue":"red";
+  const cls = t.color==="blue"?"team-blue":"team-red";
+  const cc  = t.color==="blue"?"c-blue":"c-red";
+  const player = activePlayer();
+  const initial = esc(((player||"?").trim().charAt(0) || "?").toUpperCase());
+  const dots = SUBPHASES.map((_,i)=>`<i class="${i<=g.subphaseIndex?'on':''}"></i>`).join("");
   return `
-    <div class="statusbar">
-      <span class="chip phase">${esc(SUBPHASES[g.subphaseIndex].name)}</span>
-      <span class="chip ${chipCls}">${esc(t.name)} · ${esc(activePlayer())}</span>
+    <div class="gstatus">
+      <div class="gstatus-band ${cls}">
+        <div class="avatar ${cc}">${initial}</div>
+        <div class="gstatus-who">
+          <div class="gstatus-name">${esc(player)} 🎤</div>
+          <div class="gstatus-team ${cc}">${esc(t.name)}</div>
+        </div>
+      </div>
+      <div class="gstatus-phase">
+        <span class="gphase-label">Runde ${g.subphaseIndex+1}/${SUBPHASES.length} · ${esc(SUBPHASES[g.subphaseIndex].name)}</span>
+        <span class="dots">${dots}</span>
+      </div>
     </div>`;
 }
 
@@ -575,9 +833,7 @@ function renderReady(){
     ${gameStatusbar()}
     <div class="panel">
       <div class="ready-box">
-        <div class="big ${cc}">${esc(t.name)}</div>
-        <div class="pname">${esc(activePlayer())} 🎤</div>
-        <h3 style="margin-top:14px;">Runde: ${esc(sp.name)}</h3>
+        <h3>Runde: ${esc(sp.name)}</h3>
         <p class="hint">${esc(sp.desc)}</p>
       </div>
       <button class="${accent}" onclick="startTurn()">Start (${currentTimer()}s)</button>
@@ -771,7 +1027,16 @@ function scoreBoard(){
 function scoreRow(t){
   const cls = t.color==="blue"?"team-blue":"team-red";
   const cc = t.color==="blue"?"c-blue":"c-red";
-  return `<div class="scoreline ${cls}"><span class="${cc}" style="font-weight:800;">${esc(t.name)}</span><span class="s">${t.score}</span></div>`;
+  const members = t.order.length
+    ? `<div class="members" style="margin-top:8px;">${t.order.map(n=>`<span class="member">${esc(n)}</span>`).join("")}</div>`
+    : "";
+  return `<div class="scoreline ${cls}" style="flex-direction:column;align-items:stretch;gap:0;">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <span class="${cc}" style="font-weight:800;">${esc(t.name)}</span>
+      <span class="s">${t.score}</span>
+    </div>
+    ${members}
+  </div>`;
 }
 function miniScore(){
   const [a,b] = state.teams;
@@ -810,6 +1075,7 @@ function render(){
   const s = state;
   if(s.screen==="lobby")      return renderLobby();
   if(s.screen==="addPlayer")  return renderAddPlayer();
+  if(s.screen==="editWords")  return renderEditWords();
   if(s.screen==="teams")      return renderTeams();
   if(s.screen==="game")       return renderGame();
   if(s.screen==="final")      return renderFinal();
@@ -819,6 +1085,7 @@ function render(){
 /* expose handlers used in inline onclick */
 Object.assign(window,{
   confirmReset, removePlayer, goAddPlayer, cancelAdd, savePlayer, loadTestData,
+  goEditWords, removeWord, addWord, finishEditWords,
   createTeams, startGame, startTurn, guessed, skipWord, nextTurn,
   nextSubphase, undoGuess
 });
