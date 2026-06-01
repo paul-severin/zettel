@@ -145,6 +145,29 @@
   .tname-input:focus{border-color:currentColor;box-shadow:0 0 0 3px rgba(255,255,255,.08);}
   .edit-hint{color:var(--muted);font-size:12px;text-align:center;margin:-2px 0 14px;line-height:1.45;}
 
+  /* word editor */
+  .word-edit-row{display:flex;gap:8px;align-items:center;margin-bottom:4px;}
+  .word-edit-row input{flex:1;}
+
+  /* in-game status: team color band + avatar + phase progress */
+  .gstatus{margin-bottom:16px;}
+  .gstatus-band{display:flex;align-items:center;gap:12px;border-radius:16px;padding:12px 14px;border:2px solid;}
+  .avatar{
+    width:46px;height:46px;border-radius:50%;flex:0 0 auto;display:flex;align-items:center;justify-content:center;
+    font-weight:800;font-size:21px;background:rgba(0,0,0,.32);border:2px solid currentColor;
+  }
+  .gstatus-who{min-width:0;}
+  .gstatus-name{font-size:22px;font-weight:800;line-height:1.12;word-break:break-word;}
+  .gstatus-team{font-size:13px;font-weight:700;margin-top:2px;}
+  .gstatus-phase{
+    display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px;
+    padding:8px 14px;background:var(--panel2);border:1px solid var(--line);border-radius:999px;
+  }
+  .gphase-label{font-size:13px;font-weight:700;color:var(--muted);letter-spacing:.04em;}
+  .dots{display:flex;gap:6px;align-items:center;}
+  .dots>i{width:8px;height:8px;border-radius:50%;background:var(--line);display:block;}
+  .dots>i.on{background:linear-gradient(90deg,var(--blue),#a36bff,var(--red));}
+
   .grow{flex:1;}
   .spacer{height:8px;}
   .center{text-align:center;}
@@ -355,6 +378,7 @@ function renderLobby(){
       <div id="playerList">${playersHtml}</div>
       <div class="spacer"></div>
       <button class="btn-blue" onclick="goAddPlayer()">+ Spieler hinzufügen</button>
+      ${state.players.length?`<div class="spacer"></div><button class="btn-ghost" onclick="goEditWords()">Wörter ansehen &amp; bearbeiten (${allWords().length})</button>`:""}
     </div>
 
     <button class="btn-red" onclick="createTeams()" ${canTeams?"":"disabled"}>Teams erstellen</button>
@@ -503,6 +527,72 @@ function savePlayer(){
   state.err = "";
   state.screen = "lobby";
   save(); render();
+}
+
+/* ===================================================================
+   WORD EDITOR – view / edit / remove all entered words before start
+=================================================================== */
+function goEditWords(){ state.screen="editWords"; state.err=""; save(); render(); }
+function renderEditWords(){
+  const app = document.getElementById("app");
+  const playersHtml = state.players.map((p,pi)=>{
+    const rows = p.words.map((w,wi)=>`
+      <div class="word-edit-row">
+        <input type="text" class="wEdit" data-p="${pi}" data-w="${wi}" value="${esc(w)}" autocomplete="off" autocapitalize="off" placeholder="Wort ${wi+1}" />
+        <button class="x" onclick="removeWord(${pi},${wi})" title="Wort entfernen">✕</button>
+      </div>
+      <div class="ferr" data-perr="${pi}-${wi}"></div>`).join("");
+    return `
+      <div class="panel">
+        <h2>${esc(p.name)} <span class="pill">${p.words.length} Wörter</span></h2>
+        ${p.words.length ? rows : `<p class="hint">Keine Wörter mehr für diesen Spieler.</p>`}
+        <button class="btn-ghost btn-sm" onclick="addWord(${pi})" style="margin-top:6px;">+ Wort</button>
+      </div>`;
+  }).join("");
+
+  app.innerHTML = `
+    ${header()}
+    <h2 class="center" style="margin-bottom:6px;">Wörter bearbeiten</h2>
+    <p class="edit-hint">Tippe ein Wort an, um es zu ändern · ✕ entfernt es. Dopplungen werden markiert.</p>
+    ${state.players.length ? playersHtml : `<div class="panel"><p class="hint">Noch keine Spieler.</p></div>`}
+    <div class="err" id="editWordsErr"></div>
+    <button class="btn-green" onclick="finishEditWords()">Fertig</button>
+  `;
+  app.querySelectorAll(".wEdit").forEach(inp=>{
+    inp.addEventListener("input", e=>{
+      state.players[+inp.dataset.p].words[+inp.dataset.w] = e.target.value;
+      validateAllWords();
+    });
+  });
+  validateAllWords();
+}
+// validates every word field across all players (whitespace + casing ignored)
+function validateAllWords(){
+  const app = document.getElementById("app");
+  const inputs = [...app.querySelectorAll(".wEdit")];
+  const counts = {};
+  inputs.forEach(inp=>{ const v=inp.value.trim(); if(v){ const k=norm(v); counts[k]=(counts[k]||0)+1; } });
+  let ok = true;
+  inputs.forEach(inp=>{
+    const errEl = app.querySelector('.ferr[data-perr="'+inp.dataset.p+'-'+inp.dataset.w+'"]');
+    const v = inp.value.trim();
+    let msg = "";
+    if(!v){ msg = "Leer – bitte ausfüllen oder entfernen."; ok = false; }
+    else if(counts[norm(v)] > 1){ msg = "Dieses Wort kommt mehrfach vor."; ok = false; }
+    setFieldError(inp, errEl, msg);
+  });
+  return ok;
+}
+function removeWord(pi, wi){ state.players[pi].words.splice(wi,1); save(); render(); }
+function addWord(pi){ state.players[pi].words.push(""); save(); render(); }
+function finishEditWords(){
+  const app = document.getElementById("app");
+  if(!validateAllWords()){
+    app.querySelector("#editWordsErr").textContent = "Bitte korrigiere die markierten Wörter.";
+    return;
+  }
+  state.players.forEach(p=>{ p.words = p.words.map(w=>w.trim()); });
+  state.screen = "lobby"; state.err = ""; save(); render();
 }
 
 /* ===================================================================
@@ -709,11 +799,24 @@ function renderGame(){
 function gameStatusbar(){
   const g = state.game;
   const t = curTeam();
-  const chipCls = t.color==="blue"?"blue":"red";
+  const cls = t.color==="blue"?"team-blue":"team-red";
+  const cc  = t.color==="blue"?"c-blue":"c-red";
+  const player = activePlayer();
+  const initial = esc(((player||"?").trim().charAt(0) || "?").toUpperCase());
+  const dots = SUBPHASES.map((_,i)=>`<i class="${i<=g.subphaseIndex?'on':''}"></i>`).join("");
   return `
-    <div class="statusbar">
-      <span class="chip phase">${esc(SUBPHASES[g.subphaseIndex].name)}</span>
-      <span class="chip ${chipCls}">${esc(t.name)} · ${esc(activePlayer())}</span>
+    <div class="gstatus">
+      <div class="gstatus-band ${cls}">
+        <div class="avatar ${cc}">${initial}</div>
+        <div class="gstatus-who">
+          <div class="gstatus-name">${esc(player)} 🎤</div>
+          <div class="gstatus-team ${cc}">${esc(t.name)}</div>
+        </div>
+      </div>
+      <div class="gstatus-phase">
+        <span class="gphase-label">Runde ${g.subphaseIndex+1}/${SUBPHASES.length} · ${esc(SUBPHASES[g.subphaseIndex].name)}</span>
+        <span class="dots">${dots}</span>
+      </div>
     </div>`;
 }
 
@@ -730,9 +833,7 @@ function renderReady(){
     ${gameStatusbar()}
     <div class="panel">
       <div class="ready-box">
-        <div class="big ${cc}">${esc(t.name)}</div>
-        <div class="pname">${esc(activePlayer())} 🎤</div>
-        <h3 style="margin-top:14px;">Runde: ${esc(sp.name)}</h3>
+        <h3>Runde: ${esc(sp.name)}</h3>
         <p class="hint">${esc(sp.desc)}</p>
       </div>
       <button class="${accent}" onclick="startTurn()">Start (${currentTimer()}s)</button>
@@ -974,6 +1075,7 @@ function render(){
   const s = state;
   if(s.screen==="lobby")      return renderLobby();
   if(s.screen==="addPlayer")  return renderAddPlayer();
+  if(s.screen==="editWords")  return renderEditWords();
   if(s.screen==="teams")      return renderTeams();
   if(s.screen==="game")       return renderGame();
   if(s.screen==="final")      return renderFinal();
@@ -983,6 +1085,7 @@ function render(){
 /* expose handlers used in inline onclick */
 Object.assign(window,{
   confirmReset, removePlayer, goAddPlayer, cancelAdd, savePlayer, loadTestData,
+  goEditWords, removeWord, addWord, finishEditWords,
   createTeams, startGame, startTurn, guessed, skipWord, nextTurn,
   nextSubphase, undoGuess
 });
