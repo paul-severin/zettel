@@ -156,6 +156,8 @@
 
   .wlist{display:flex;flex-wrap:wrap;gap:7px;margin-top:6px;}
   .wtag{font-size:13px;background:rgba(19,214,122,.12);border:1px solid rgba(19,214,122,.4);color:#7bf3bd;border-radius:999px;padding:5px 11px;}
+  .wtag-btn{width:auto;cursor:pointer;}
+  .wtag-btn:active{filter:brightness(1.2);}
 
   .winner{font-size:30px;font-weight:800;text-align:center;margin:6px 0;}
   .confetti{font-size:40px;text-align:center;}
@@ -641,7 +643,8 @@ function renderTurnResult(){
   const t = curTeam();   // team that just played (pointer already advanced, but team index unchanged)
   const poolEmpty = g.pool.length===0;
   const wordsHtml = g.guessedThisTurn.length
-    ? `<div class="wlist">${g.guessedThisTurn.map(w=>`<span class="wtag">${esc(w)}</span>`).join("")}</div>`
+    ? `<div class="wlist">${g.guessedThisTurn.map((w,i)=>`<button class="wtag wtag-btn" onclick="undoGuess(${i})" title="Zurück in den Topf">${esc(w)} ✕</button>`).join("")}</div>
+       <p class="hint" style="margin-top:10px;">Falsch gewertet? Tippe ein Wort an, um es zurück in den Topf zu legen – der Punkt wird abgezogen.</p>`
     : `<p class="hint">Diese Runde leider kein Wort erraten.</p>`;
   const cc = t.color==="blue"?"c-blue":"c-red";
   const app = document.getElementById("app");
@@ -659,6 +662,15 @@ function renderTurnResult(){
     </button>
     ${poolEmpty?"":`<p class="small-note">Noch ${g.pool.length} Wörter in der Runde „${esc(SUBPHASES[g.subphaseIndex].name)}“.</p>`}
   `;
+}
+// put a wrongly-counted word back into the pool and revoke its point
+function undoGuess(i){
+  const g = state.game;
+  if(i < 0 || i >= g.guessedThisTurn.length) return;
+  const w = g.guessedThisTurn.splice(i,1)[0];
+  curTeam().score = Math.max(0, curTeam().score - 1);
+  g.pool.push(w);
+  save(); render();
 }
 function nextTurn(){
   const g = state.game;
@@ -768,7 +780,7 @@ function render(){
 Object.assign(window,{
   confirmReset, removePlayer, goAddPlayer, cancelAdd, savePlayer, loadTestData,
   createTeams, startGame, startTurn, guessed, skipWord, nextTurn,
-  nextSubphase
+  nextSubphase, undoGuess
 });
 
 /* ---------- boot ---------- */
