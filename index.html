@@ -156,6 +156,8 @@
 
   .wlist{display:flex;flex-wrap:wrap;gap:7px;margin-top:6px;}
   .wtag{font-size:13px;background:rgba(19,214,122,.12);border:1px solid rgba(19,214,122,.4);color:#7bf3bd;border-radius:999px;padding:5px 11px;}
+  .wtag-btn{width:auto;cursor:pointer;}
+  .wtag-btn:active{filter:brightness(1.2);}
 
   .winner{font-size:30px;font-weight:800;text-align:center;margin:6px 0;}
   .confetti{font-size:40px;text-align:center;}
@@ -187,7 +189,7 @@ let timerId = null;
 function freshState(){
   return {
     screen:"lobby",
-    settings:{ timerSeconds:40, wordsPerPlayer:5 },
+    settings:{ timers:[40,40,40,40], wordsPerPlayer:5 },   // one timer per subphase
     players:[],          // {name, words:[]}
     teams:null,          // [{name,color,order:[names],pointer,score}]
     game:null,
@@ -210,6 +212,14 @@ function load(){
     const s = JSON.parse(raw);
     if(!s || !s.screen) return false;
     state = s; state.err = "";
+    // migrate older saves: single timerSeconds -> per-subphase timers array
+    if(!state.settings) state.settings = {};
+    if(!Array.isArray(state.settings.timers)){
+      const v = state.settings.timerSeconds || 40;
+      state.settings.timers = [v,v,v,v];
+    }
+    delete state.settings.timerSeconds;
+    if(!state.settings.wordsPerPlayer) state.settings.wordsPerPlayer = 5;
     // recover from a reload mid-turn: restart the turn cleanly
     if(state.game && state.game.phase === "playing"){
       state.game.pool = (state.game.turnStartPool||state.game.pool).slice();
@@ -237,6 +247,30 @@ function shuffle(arr){
   return a;
 }
 function esc(s){ return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+/* ---------- beep (Web Audio, offline) ---------- */
+let audioCtx = null;
+function unlockAudio(){   // call inside a user gesture (Start tap) so iOS allows sound
+  try{
+    if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    if(audioCtx.state === "suspended") audioCtx.resume();
+  }catch(e){}
+}
+function beep(freq, dur){
+  try{
+    unlockAudio();
+    if(!audioCtx) return;
+    const o = audioCtx.createOscillator();
+    const gn = audioCtx.createGain();
+    o.type = "square"; o.frequency.value = freq;
+    o.connect(gn); gn.connect(audioCtx.destination);
+    const t = audioCtx.currentTime;
+    gn.gain.setValueAtTime(0.0001, t);
+    gn.gain.exponentialRampToValueAtTime(0.3, t+0.01);
+    gn.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+    o.start(t); o.stop(t+dur+0.02);
+  }catch(e){}
+}
 function el(html){ const t=document.createElement("template"); t.innerHTML=html.trim(); return t.content.firstChild; }
 
 /* ---------- top header ---------- */
@@ -279,15 +313,18 @@ function renderLobby(){
 
     <div class="panel">
       <h2>Einstellungen</h2>
+      <label>Wörter pro Spieler</label>
+      <input type="number" id="setWords" min="1" max="12" value="${s.wordsPerPlayer}" inputmode="numeric" />
+      <div class="spacer"></div>
+      <h3>Timer pro Phase (Sekunden)</h3>
       <div class="row">
-        <div>
-          <label>Timer (Sekunden)</label>
-          <input type="number" id="setTimer" min="10" max="180" value="${s.timerSeconds}" inputmode="numeric" />
-        </div>
-        <div>
-          <label>Wörter pro Spieler</label>
-          <input type="number" id="setWords" min="1" max="12" value="${s.wordsPerPlayer}" inputmode="numeric" />
-        </div>
+        <div><label>${SUBPHASES[0].name}</label><input type="number" id="t0" min="5" max="180" value="${s.timers[0]}" inputmode="numeric" /></div>
+        <div><label>${SUBPHASES[1].name}</label><input type="number" id="t1" min="5" max="180" value="${s.timers[1]}" inputmode="numeric" /></div>
+      </div>
+      <div class="spacer"></div>
+      <div class="row">
+        <div><label>${SUBPHASES[2].name}</label><input type="number" id="t2" min="5" max="180" value="${s.timers[2]}" inputmode="numeric" /></div>
+        <div><label>${SUBPHASES[3].name}</label><input type="number" id="t3" min="5" max="180" value="${s.timers[3]}" inputmode="numeric" /></div>
       </div>
     </div>
 
@@ -304,9 +341,11 @@ function renderLobby(){
   `;
 
   // keep settings in sync live
-  app.querySelector("#setTimer").addEventListener("change", e=>{
-    let v = parseInt(e.target.value,10); if(isNaN(v)) v=40; v=Math.min(180,Math.max(10,v));
-    state.settings.timerSeconds = v; e.target.value=v; save();
+  [0,1,2,3].forEach(i=>{
+    app.querySelector("#t"+i).addEventListener("change", e=>{
+      let v = parseInt(e.target.value,10); if(isNaN(v)) v=40; v=Math.min(180,Math.max(5,v));
+      state.settings.timers[i] = v; e.target.value=v; save();
+    });
   });
   app.querySelector("#setWords").addEventListener("change", e=>{
     let v = parseInt(e.target.value,10); if(isNaN(v)) v=5; v=Math.min(12,Math.max(1,v));
@@ -319,7 +358,7 @@ function goAddPlayer(){ state.screen="addPlayer"; state.err=""; save(); render()
 // quick test setup: 4 players x 3 words, 3 words/player, 5s timer
 function loadTestData(){
   state.settings.wordsPerPlayer = 3;
-  state.settings.timerSeconds = 5;
+  state.settings.timers = [5,5,5,5];
   const w = ["Apfel","Banane","Kaktus","Drache","Eimer","Fahrrad","Gitarre","Hammer","Igel","Jacke","Kerze","Lampe"];
   const names = ["Anna","Ben","Clara","David"];
   state.players = names.map((name,i)=>({ name, words: w.slice(i*3, i*3+3) }));
@@ -493,7 +532,7 @@ function startGame(){
     currentWord:null,
     guessedThisTurn:[],
     turnStartPool:[],
-    timeLeft: state.settings.timerSeconds,
+    timeLeft: state.settings.timers[0],
     phase:"ready"
   };
   state.screen = "game";
@@ -502,6 +541,7 @@ function startGame(){
 
 function curTeam(){ return state.teams[state.game.currentTeamIndex]; }
 function activePlayer(){ const t=curTeam(); return t.order[t.pointer]; }
+function currentTimer(){ return state.settings.timers[state.game.subphaseIndex] || 40; }
 
 function renderGame(){
   const g = state.game;
@@ -540,7 +580,7 @@ function renderReady(){
         <h3 style="margin-top:14px;">Runde: ${esc(sp.name)}</h3>
         <p class="hint">${esc(sp.desc)}</p>
       </div>
-      <button class="${accent}" onclick="startTurn()">Start (${g.timeLeft}s)</button>
+      <button class="${accent}" onclick="startTurn()">Start (${currentTimer()}s)</button>
       <p class="small-note">Gib das Handy an ${esc(activePlayer())}. Erst dann auf Start tippen!</p>
     </div>
     ${miniScore()}
@@ -549,8 +589,9 @@ function renderReady(){
 
 /* ----- playing ----- */
 function startTurn(){
+  unlockAudio();   // enable beeps while we have a user gesture
   const g = state.game;
-  g.timeLeft = state.settings.timerSeconds;
+  g.timeLeft = currentTimer();
   g.guessedThisTurn = [];
   g.turnStartPool = g.pool.slice();
   g.currentWord = null;
@@ -564,7 +605,8 @@ function startTurn(){
 function tick(){
   const g = state.game;
   g.timeLeft--;
-  if(g.timeLeft <= 0){ g.timeLeft = 0; endTurn(); return; }
+  if(g.timeLeft <= 0){ g.timeLeft = 0; beep(880, 0.6); endTurn(); return; }   // final long beep
+  if(g.timeLeft <= 3) beep(660, 0.12);                                        // countdown ticks
   updateTimerUI();
   save();
 }
@@ -602,7 +644,7 @@ function renderPlaying(){
     ${gameStatusbar()}
     <div class="timer-wrap">
       <div class="timer-num ${g.timeLeft<=10?'low':''}" id="timerNum">${g.timeLeft}</div>
-      <div class="bar"><i id="timerBar" style="width:${(g.timeLeft/state.settings.timerSeconds)*100}%"></i></div>
+      <div class="bar"><i id="timerBar" style="width:${(g.timeLeft/currentTimer())*100}%"></i></div>
     </div>
     <div class="wordcard"><div class="w" id="curWord">${esc(g.currentWord||"–")}</div></div>
     <button class="btn-green" onclick="guessed()">Erraten ✓</button>
@@ -622,7 +664,7 @@ function updateTimerUI(){
   const num = document.getElementById("timerNum");
   if(num){ num.textContent = g.timeLeft; num.classList.toggle("low", g.timeLeft<=10); }
   const bar = document.getElementById("timerBar");
-  if(bar) bar.style.width = ((g.timeLeft/state.settings.timerSeconds)*100)+"%";
+  if(bar) bar.style.width = ((g.timeLeft/currentTimer())*100)+"%";
 }
 
 /* ----- end of a turn ----- */
@@ -641,7 +683,8 @@ function renderTurnResult(){
   const t = curTeam();   // team that just played (pointer already advanced, but team index unchanged)
   const poolEmpty = g.pool.length===0;
   const wordsHtml = g.guessedThisTurn.length
-    ? `<div class="wlist">${g.guessedThisTurn.map(w=>`<span class="wtag">${esc(w)}</span>`).join("")}</div>`
+    ? `<div class="wlist">${g.guessedThisTurn.map((w,i)=>`<button class="wtag wtag-btn" onclick="undoGuess(${i})" title="Zurück in den Topf">${esc(w)} ✕</button>`).join("")}</div>
+       <p class="hint" style="margin-top:10px;">Falsch gewertet? Tippe ein Wort an, um es zurück in den Topf zu legen – der Punkt wird abgezogen.</p>`
     : `<p class="hint">Diese Runde leider kein Wort erraten.</p>`;
   const cc = t.color==="blue"?"c-blue":"c-red";
   const app = document.getElementById("app");
@@ -659,6 +702,15 @@ function renderTurnResult(){
     </button>
     ${poolEmpty?"":`<p class="small-note">Noch ${g.pool.length} Wörter in der Runde „${esc(SUBPHASES[g.subphaseIndex].name)}“.</p>`}
   `;
+}
+// put a wrongly-counted word back into the pool and revoke its point
+function undoGuess(i){
+  const g = state.game;
+  if(i < 0 || i >= g.guessedThisTurn.length) return;
+  const w = g.guessedThisTurn.splice(i,1)[0];
+  curTeam().score = Math.max(0, curTeam().score - 1);
+  g.pool.push(w);
+  save(); render();
 }
 function nextTurn(){
   const g = state.game;
@@ -768,7 +820,7 @@ function render(){
 Object.assign(window,{
   confirmReset, removePlayer, goAddPlayer, cancelAdd, savePlayer, loadTestData,
   createTeams, startGame, startTurn, guessed, skipWord, nextTurn,
-  nextSubphase
+  nextSubphase, undoGuess
 });
 
 /* ---------- boot ---------- */
