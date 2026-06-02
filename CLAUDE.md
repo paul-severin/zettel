@@ -1,7 +1,7 @@
 # ZETTEL
 
-A party word-guessing game (German UI, Activity/Tabu-style). Two teams take turns
-describing/acting out words across four phases (Erklären, Pantomime, Ein Wort, Ein Ton).
+A party word-guessing game (German UI, Activity/Tabu-style). 2–6 teams take turns
+describing/acting out words across editable phases (default: Erklären, Pantomime, Ein Wort, Ein Ton).
 Designed for a single phone passed around the group.
 
 ## Project layout
@@ -20,6 +20,10 @@ Designed for a single phone passed around the group.
 - Rounds ("phases") live in `state.settings.phases` (`{name, timer}`), seeded from
   `DEFAULT_PHASES` and editable in the lobby (rename / reorder / add / delete). Access via
   the `phases()` helper. Words come from `allWords()` (all players' words).
+- Teams: `state.settings.numTeams` (2–`MAX_TEAMS`); `createTeams()` distributes shuffled
+  players round-robin. Each team is `{name, color(hex), order, pointer, score}`. Colours come
+  from `TEAM_PALETTE` and are applied via a `--tc` CSS custom property (with `color-mix`),
+  not per-colour classes — so any number of team colours works.
 
 ## Conventions
 - UI text is German.
