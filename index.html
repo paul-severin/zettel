@@ -110,15 +110,20 @@
     #rotateGuard .ic{font-size:54px;}
   }
 
-  /* glowing team cards */
-  .team-card{border-radius:18px;padding:16px;margin-bottom:14px;border:2px solid;}
-  @keyframes glowBlue{0%,100%{box-shadow:0 0 10px rgba(47,123,255,.55),0 0 26px rgba(47,123,255,.25);}50%{box-shadow:0 0 18px rgba(47,123,255,.85),0 0 44px rgba(47,123,255,.4);}}
-  @keyframes glowRed{0%,100%{box-shadow:0 0 10px rgba(255,46,80,.55),0 0 26px rgba(255,46,80,.25);}50%{box-shadow:0 0 18px rgba(255,46,80,.85),0 0 44px rgba(255,46,80,.4);}}
-  .team-blue{border-color:var(--blue);background:linear-gradient(180deg,rgba(47,123,255,.12),rgba(47,123,255,.03));animation:glowBlue 3.2s ease-in-out infinite;}
-  .team-red{border-color:var(--red);background:linear-gradient(180deg,rgba(255,46,80,.12),rgba(255,46,80,.03));animation:glowRed 3.2s ease-in-out infinite;}
+  /* glowing team cards — colour driven by the --tc custom property set per team */
+  .team-card{border-radius:18px;padding:16px;margin-bottom:14px;border:2px solid var(--tc,#2f7bff);
+    background:linear-gradient(180deg,color-mix(in srgb,var(--tc,#2f7bff) 12%,transparent),color-mix(in srgb,var(--tc,#2f7bff) 3%,transparent));
+    animation:teamGlow 3.2s ease-in-out infinite;}
+  @keyframes teamGlow{
+    0%,100%{box-shadow:0 0 10px color-mix(in srgb,var(--tc,#2f7bff) 55%,transparent),0 0 26px color-mix(in srgb,var(--tc,#2f7bff) 25%,transparent);}
+    50%{box-shadow:0 0 18px color-mix(in srgb,var(--tc,#2f7bff) 85%,transparent),0 0 44px color-mix(in srgb,var(--tc,#2f7bff) 40%,transparent);}
+  }
+  /* tint without the pulsing glow (score rows / bars) */
+  .team-tinted{border-color:var(--tc,#2f7bff)!important;
+    background:linear-gradient(180deg,color-mix(in srgb,var(--tc,#2f7bff) 12%,transparent),color-mix(in srgb,var(--tc,#2f7bff) 3%,transparent));}
   .team-card h3{color:inherit;}
   .team-card .tname{font-size:18px;font-weight:800;margin-bottom:8px;}
-  .c-blue{color:#7db0ff;}.c-red{color:#ff8197;}
+  .tc{color:color-mix(in srgb,var(--tc,#2f7bff) 62%,white);}
   .members{display:flex;flex-wrap:wrap;gap:7px;}
   .member{font-size:13px;background:rgba(0,0,0,.25);border:1px solid var(--line);border-radius:999px;padding:5px 11px;}
   .member.active{font-weight:800;}
@@ -174,10 +179,10 @@
 
   /* in-game status: team-coloured frame + phase progress */
   .gstatus{margin:24px 0 26px;}
-  /* border-width/style only (no shorthand) so the team colour from .team-blue/.team-red wins */
   .gstatus-band{
     display:flex;flex-direction:column;align-items:center;text-align:center;gap:3px;
-    border-radius:16px;padding:16px 18px;border-width:2px;border-style:solid;
+    border-radius:16px;padding:16px 18px;border:2px solid var(--tc,#2f7bff);
+    background:linear-gradient(180deg,color-mix(in srgb,var(--tc,#2f7bff) 12%,transparent),color-mix(in srgb,var(--tc,#2f7bff) 3%,transparent));
   }
   .gstatus-team{font-size:14px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;}
   .gstatus-name{font-size:26px;font-weight:800;line-height:1.15;word-break:break-word;}
@@ -221,6 +226,19 @@
   .scoreline{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-radius:12px;margin-bottom:10px;border:1px solid var(--line);}
   .scoreline .s{font-size:24px;font-weight:800;font-variant-numeric:tabular-nums;}
 
+  /* team score bar charts */
+  .chart{display:flex;flex-direction:column;gap:12px;}
+  .chart-row{display:flex;flex-direction:column;gap:5px;}
+  .chart-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;}
+  .chart-head .nm{font-weight:800;font-size:14px;}
+  .chart-head .s{font-size:18px;font-weight:800;font-variant-numeric:tabular-nums;}
+  .chart-track{height:18px;background:var(--bg);border:1px solid var(--line);border-radius:999px;overflow:hidden;}
+  .chart-fill{height:100%;border-radius:999px;min-width:2px;
+    background:linear-gradient(90deg,color-mix(in srgb,var(--tc,#2f7bff) 65%,transparent),var(--tc,#2f7bff));
+    box-shadow:0 0 12px color-mix(in srgb,var(--tc,#2f7bff) 45%,transparent);
+    transition:width .6s cubic-bezier(.22,.61,.36,1);}
+  .chart-row.lead .chart-fill{box-shadow:0 0 16px color-mix(in srgb,var(--tc,#2f7bff) 70%,transparent);}
+
   .wlist{display:flex;flex-wrap:wrap;gap:7px;margin-top:6px;}
   .wtag{font-size:13px;background:rgba(19,214,122,.12);border:1px solid rgba(19,214,122,.4);color:#7bf3bd;border-radius:999px;padding:5px 11px;}
   .wtag-btn{width:auto;cursor:pointer;}
@@ -253,6 +271,23 @@ const DEFAULT_PHASES = [
 function defaultPhases(){ return JSON.parse(JSON.stringify(DEFAULT_PHASES)); }
 function phases(){ return state.settings.phases; }
 
+// up to this many teams; each entry drives a default name + colour (hex via --tc)
+const TEAM_PALETTE = [
+  {id:"blue",   name:"Team Blau",   hex:"#2f7bff"},
+  {id:"red",    name:"Team Rot",    hex:"#ff2e50"},
+  {id:"green",  name:"Team Grün",   hex:"#13d67a"},
+  {id:"amber",  name:"Team Gelb",   hex:"#ffb02e"},
+  {id:"purple", name:"Team Lila",   hex:"#a36bff"},
+  {id:"teal",   name:"Team Türkis", hex:"#18c5d6"},
+];
+const MAX_TEAMS = TEAM_PALETTE.length;
+// resolve a team colour to a hex (accepts a hex, a legacy id like "blue", or falls back by index)
+function teamHex(color, index){
+  if(typeof color === "string" && color[0] === "#") return color;
+  const byId = TEAM_PALETTE.find(p=>p.id===color);
+  return (byId || TEAM_PALETTE[index % TEAM_PALETTE.length]).hex;
+}
+
 let state = freshState();
 let timerId = null;
 let phasesOpen = false;   // lobby: is the collapsible phase config expanded
@@ -260,9 +295,9 @@ let phasesOpen = false;   // lobby: is the collapsible phase config expanded
 function freshState(){
   return {
     screen:"lobby",
-    settings:{ phases:defaultPhases(), wordsPerPlayer:5 },   // each phase carries its own timer (s)
+    settings:{ phases:defaultPhases(), wordsPerPlayer:5, numTeams:2 },   // each phase carries its own timer (s)
     players:[],          // {name, words:[]}
-    teams:null,          // [{name,color,order:[names],pointer,score}]
+    teams:null,          // [{name,color(hex),order:[names],pointer,score}]
     game:null,
     err:""
   };
@@ -301,6 +336,9 @@ function load(){
     delete state.settings.timers;
     delete state.settings.timerSeconds;
     if(!state.settings.wordsPerPlayer) state.settings.wordsPerPlayer = 5;
+    if(!state.settings.numTeams) state.settings.numTeams = Array.isArray(state.teams) ? state.teams.length : 2;
+    // migrate old team colour ids (blue/red) to hex driving --tc
+    if(Array.isArray(state.teams)) state.teams.forEach((t,i)=>{ t.color = teamHex(t.color, i); });
     // recover from a reload mid-turn: restart the turn cleanly
     if(state.game && state.game.phase === "playing"){
       state.game.pool = (state.game.turnStartPool||state.game.pool).slice();
@@ -374,7 +412,8 @@ function confirmReset(){
 =================================================================== */
 function renderLobby(){
   const s = state.settings;
-  const minPlayers = 4;
+  const numTeams = Math.min(MAX_TEAMS, Math.max(2, s.numTeams||2));
+  const minPlayers = numTeams * 2;   // at least two players per team
   const canTeams = state.players.length >= minPlayers;
 
   const playersHtml = state.players.length
@@ -394,8 +433,16 @@ function renderLobby(){
 
     <div class="panel">
       <h2>Einstellungen</h2>
-      <label>Wörter pro Spieler</label>
-      <input type="number" id="setWords" min="1" max="12" value="${s.wordsPerPlayer}" inputmode="numeric" />
+      <div class="row">
+        <div>
+          <label>Wörter pro Spieler</label>
+          <input type="number" id="setWords" min="1" max="12" value="${s.wordsPerPlayer}" inputmode="numeric" />
+        </div>
+        <div>
+          <label>Anzahl Teams</label>
+          <input type="number" id="setTeams" min="2" max="${MAX_TEAMS}" value="${numTeams}" inputmode="numeric" />
+        </div>
+      </div>
     </div>
 
     <details class="panel phase-panel" id="phasePanel" ${phasesOpen?"open":""}>
@@ -423,6 +470,10 @@ function renderLobby(){
   app.querySelector("#setWords").addEventListener("change", e=>{
     let v = parseInt(e.target.value,10); if(isNaN(v)) v=5; v=Math.min(12,Math.max(1,v));
     state.settings.wordsPerPlayer = v; e.target.value=v; save();
+  });
+  app.querySelector("#setTeams").addEventListener("change", e=>{
+    let v = parseInt(e.target.value,10); if(isNaN(v)) v=2; v=Math.min(MAX_TEAMS,Math.max(2,v));
+    state.settings.numTeams = v; e.target.value=v; save(); render();
   });
   wirePhaseEditors(app);
   const pp = app.querySelector("#phasePanel");
@@ -486,6 +537,7 @@ function goAddPlayer(){ state.screen="addPlayer"; state.err=""; save(); render()
 // quick test setup: 4 players x 3 words, 3 words/player, 5s timer
 function loadTestData(){
   state.settings.wordsPerPlayer = 3;
+  state.settings.numTeams = 2;
   state.settings.phases = defaultPhases().map(p=>({ ...p, timer:5 }));
   const w = ["Apfel","Banane","Kaktus","Drache","Eimer","Fahrrad","Gitarre","Hammer","Igel","Jacke","Kerze","Lampe"];
   const names = ["Anna","Ben","Clara","David"];
@@ -681,27 +733,28 @@ function finishEditWords(){
    PHASE 2 – TEAMS
 =================================================================== */
 function createTeams(){
+  const n = Math.min(MAX_TEAMS, Math.max(2, state.settings.numTeams||2));
   const order = shuffle(state.players.map(p=>p.name));
-  const half = Math.ceil(order.length/2);   // odd -> team 1 gets the extra
-  const t1 = order.slice(0,half);
-  const t2 = order.slice(half);
-  state.teams = [
-    { name:"Team Blau", color:"blue", order:t1, pointer:Math.floor(Math.random()*t1.length), score:0 },
-    { name:"Team Rot",  color:"red",  order:t2, pointer:Math.floor(Math.random()*t2.length), score:0 },
-  ];
+  const buckets = Array.from({length:n}, ()=>[]);
+  order.forEach((name,i)=>buckets[i % n].push(name));   // round-robin -> balanced sizes
+  state.teams = buckets.map((members,i)=>({
+    name: TEAM_PALETTE[i].name,
+    color: TEAM_PALETTE[i].hex,
+    order: members,
+    pointer: members.length ? Math.floor(Math.random()*members.length) : 0,
+    score: 0
+  }));
   state.screen = "teams";
   save(); render();
 }
 function renderTeams(){
-  const [a,b] = state.teams;
   const canStart = state.teams.every(t=>t.order.length>0);
   const app = document.getElementById("app");
   app.innerHTML = `
     ${header()}
     <h2 class="center" style="margin-bottom:8px;">Die Teams stehen!</h2>
     <p class="edit-hint">Teamnamen antippen zum Umbenennen · Spieler per Drag&nbsp;&amp;&nbsp;Drop zwischen den Teams verschieben.</p>
-    ${editableTeamCard(a,0)}
-    ${editableTeamCard(b,1)}
+    ${state.teams.map((t,i)=>editableTeamCard(t,i)).join("")}
     <button class="btn-green" onclick="startGame()" ${canStart?"":"disabled"}>Spiel starten</button>
     ${canStart?"":`<p class="small-note">Jedes Team braucht mindestens einen Spieler.</p>`}
     <p class="small-note">Tipp: Pro Zug rät dein eigenes Team mit, während du das Handy hältst.</p>
@@ -710,26 +763,22 @@ function renderTeams(){
 }
 // read-only card (used on scoreboards / Zwischenwertung)
 function teamCard(t, activeName){
-  const cls = t.color==="blue"?"team-blue":"team-red";
-  const cc = t.color==="blue"?"c-blue":"c-red";
   const members = t.order.map(n=>`<span class="member ${activeName&&n===activeName?'active':''}">${esc(n)}${activeName&&n===activeName?' 🎤':''}</span>`).join("");
   return `
-    <div class="team-card ${cls}">
-      <div class="tname ${cc}">${esc(t.name)}</div>
+    <div class="team-card" style="--tc:${esc(t.color)}">
+      <div class="tname tc">${esc(t.name)}</div>
       <div class="members">${members}</div>
     </div>`;
 }
 // editable card shown right after random team setup
 function editableTeamCard(t, ti){
-  const cls = t.color==="blue"?"team-blue":"team-red";
-  const cc = t.color==="blue"?"c-blue":"c-red";
   const members = t.order.length
     ? t.order.map(n=>`<span class="member draggable" data-team="${ti}" data-name="${esc(n)}">${esc(n)}</span>`).join("")
     : `<span class="empty-hint">Spieler hierher ziehen …</span>`;
   return `
-    <div class="team-card ${cls}" data-team="${ti}">
-      <input class="tname-input ${cc}" data-team="${ti}" value="${esc(t.name)}" maxlength="24" aria-label="Teamname" />
-      <div class="members editable ${cc}" data-team="${ti}">${members}</div>
+    <div class="team-card" data-team="${ti}" style="--tc:${esc(t.color)}">
+      <input class="tname-input tc" data-team="${ti}" value="${esc(t.name)}" maxlength="24" aria-label="Teamname" />
+      <div class="members editable tc" data-team="${ti}">${members}</div>
     </div>`;
 }
 
@@ -748,7 +797,7 @@ function initTeamEditing(){
 function commitTeamName(e){
   const inp = e.target, ti = +inp.dataset.team;
   let v = inp.value.trim();
-  if(!v){ v = ti===0 ? "Team Blau" : "Team Rot"; inp.value = v; }
+  if(!v){ v = (TEAM_PALETTE[ti] && TEAM_PALETTE[ti].name) || ("Team " + (ti+1)); inp.value = v; }
   state.teams[ti].name = v; save();
 }
 
@@ -855,7 +904,7 @@ function startGame(){
   state.game = {
     subphaseIndex:0,
     pool: shuffle(allWords()),
-    currentTeamIndex: Math.floor(Math.random()*2),  // random starting team
+    currentTeamIndex: Math.floor(Math.random()*state.teams.length),  // random starting team
     currentWord:null,
     guessedThisTurn:[],
     turnStartPool:[],
@@ -881,14 +930,12 @@ function renderGame(){
 function gameStatusbar(){
   const g = state.game;
   const t = curTeam();
-  const cls = t.color==="blue"?"team-blue":"team-red";
-  const cc  = t.color==="blue"?"c-blue":"c-red";
   const player = activePlayer();
   const dots = phases().map((_,i)=>`<i class="${i<=g.subphaseIndex?'on':''}"></i>`).join("");
   return `
     <div class="gstatus">
-      <div class="gstatus-band ${cls}">
-        <div class="gstatus-team ${cc}">${esc(t.name)}</div>
+      <div class="gstatus-band" style="--tc:${esc(t.color)}">
+        <div class="gstatus-team tc">${esc(t.name)}</div>
         <div class="gstatus-name">${esc(player)} 🎤</div>
       </div>
       <div class="gstatus-phase">
@@ -966,8 +1013,6 @@ function skipWord(){
 }
 function renderPlaying(){
   const g = state.game;
-  const t = curTeam();
-  const accent = t.color==="blue"?"blue":"red";
   const app = document.getElementById("app");
   app.innerHTML = `
     ${header()}
@@ -1016,13 +1061,12 @@ function renderTurnResult(){
     ? `<div class="wlist">${g.guessedThisTurn.map((w,i)=>`<button class="wtag wtag-btn" onclick="undoGuess(${i})" title="Zurück in den Topf">${esc(w)} ✕</button>`).join("")}</div>
        <p class="hint" style="margin-top:10px;">Falsch gewertet? Tippe ein Wort an, um es zurück in den Topf zu legen – der Punkt wird abgezogen.</p>`
     : `<p class="hint">Diese Runde leider kein Wort erraten.</p>`;
-  const cc = t.color==="blue"?"c-blue":"c-red";
   const app = document.getElementById("app");
   app.innerHTML = `
     ${header()}
     <h2 class="center">Zeit um! ⏱</h2>
-    <div class="panel">
-      <h3 class="${cc}">${esc(t.name)} – diese Runde</h3>
+    <div class="panel" style="--tc:${esc(t.color)}">
+      <h3 class="tc">${esc(t.name)} – diese Runde</h3>
       <div class="center" style="font-size:40px;font-weight:800;margin:6px 0;">+${g.guessedThisTurn.length}</div>
       ${wordsHtml}
     </div>
@@ -1047,7 +1091,7 @@ function nextTurn(){
   if(g.pool.length===0){
     g.phase = "subphaseDone";
   }else{
-    g.currentTeamIndex = 1 - g.currentTeamIndex;   // teams alternate
+    g.currentTeamIndex = (g.currentTeamIndex + 1) % state.teams.length;   // teams rotate
     g.phase = "ready";
   }
   save(); render();
@@ -1080,57 +1124,53 @@ function nextSubphase(){
   const g = state.game;
   g.subphaseIndex++;
   g.pool = shuffle(allWords());
-  g.currentTeamIndex = 1 - g.currentTeamIndex;
+  g.currentTeamIndex = (g.currentTeamIndex + 1) % state.teams.length;
   g.currentWord = null;
   g.guessedThisTurn = [];
   g.phase = "ready";
   save(); render();
 }
 
-/* ----- scoreboards ----- */
-function scoreBoard(){
-  const [a,b] = state.teams;
-  return `
-    <div class="panel">
-      <h3>Gesamtstand</h3>
-      ${scoreRow(a)}
-      ${scoreRow(b)}
+/* ----- scoreboards (bar charts) ----- */
+// bars are scaled to the current leader; leading team(s) get a stronger glow
+function scoreChart(showMembers){
+  const top = Math.max(0, ...state.teams.map(t=>t.score));
+  const denom = Math.max(1, top);
+  return `<div class="chart">${state.teams.map(t=>{
+    const pct = Math.round((t.score/denom)*100);
+    const lead = top>0 && t.score===top;
+    const members = showMembers && t.order.length
+      ? `<div class="members" style="margin-top:6px;">${t.order.map(n=>`<span class="member">${esc(n)}</span>`).join("")}</div>`
+      : "";
+    return `<div class="chart-row ${lead?'lead':''}" style="--tc:${esc(t.color)}">
+      <div class="chart-head"><span class="nm tc">${esc(t.name)}${lead?' 👑':''}</span><span class="s">${t.score}</span></div>
+      <div class="chart-track"><div class="chart-fill" style="width:${pct}%"></div></div>
+      ${members}
     </div>`;
+  }).join("")}</div>`;
 }
-function scoreRow(t){
-  const cls = t.color==="blue"?"team-blue":"team-red";
-  const cc = t.color==="blue"?"c-blue":"c-red";
-  const members = t.order.length
-    ? `<div class="members" style="margin-top:8px;">${t.order.map(n=>`<span class="member">${esc(n)}</span>`).join("")}</div>`
-    : "";
-  return `<div class="scoreline ${cls}" style="flex-direction:column;align-items:stretch;gap:0;">
-    <div style="display:flex;justify-content:space-between;align-items:center;">
-      <span class="${cc}" style="font-weight:800;">${esc(t.name)}</span>
-      <span class="s">${t.score}</span>
-    </div>
-    ${members}
-  </div>`;
+function scoreBoard(){
+  return `<div class="panel"><h3>Gesamtstand</h3>${scoreChart(true)}</div>`;
 }
 function miniScore(){
-  const [a,b] = state.teams;
-  return `
-    <div class="row" style="gap:10px;">
-      <div class="scoreline team-blue grow"><span class="c-blue" style="font-weight:800;">${esc(a.name)}</span><span class="s">${a.score}</span></div>
-      <div class="scoreline team-red grow"><span class="c-red" style="font-weight:800;">${esc(b.name)}</span><span class="s">${b.score}</span></div>
-    </div>`;
+  return `<div class="panel" style="padding:14px 16px;">${scoreChart(false)}</div>`;
 }
 
 /* ===================================================================
    FINAL
 =================================================================== */
 function renderFinal(){
-  const [a,b] = state.teams;
+  const top = Math.max(0, ...state.teams.map(t=>t.score));
+  const winners = state.teams.filter(t=>t.score===top);
   let title, sub;
-  if(a.score===b.score){ title="Unentschieden!"; sub="Was für ein Krimi 🤝"; }
-  else{
-    const w = a.score>b.score?a:b;
-    title = `${w.name} gewinnt! 🏆`;
-    sub = w.color==="blue"?"Blau triumphiert 💙":"Rot triumphiert ❤️";
+  if(winners.length === state.teams.length){
+    title = "Unentschieden!"; sub = "Was für ein Krimi 🤝";
+  } else if(winners.length > 1){
+    title = "Gleichstand an der Spitze!";
+    sub = winners.map(w=>esc(w.name)).join(" & ") + " teilen sich den Sieg 🤝";
+  } else {
+    title = `${winners[0].name} gewinnt! 🏆`;
+    sub = "Gut gespielt! 🎉";
   }
   const app = document.getElementById("app");
   app.innerHTML = `
