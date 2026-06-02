@@ -149,6 +149,23 @@
   .word-edit-row{display:flex;gap:8px;align-items:center;margin-bottom:4px;}
   .word-edit-row input{flex:1;}
 
+  /* phase editor */
+  textarea{
+    width:100%;background:var(--bg);border:1px solid var(--line);border-radius:12px;
+    color:var(--text);font-family:inherit;font-size:15px;padding:11px 12px;outline:none;resize:vertical;
+    transition:border-color .15s,box-shadow .15s;
+  }
+  textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(47,123,255,.18);}
+  .phase-edit{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:10px;}
+  .phase-edit-head{display:flex;gap:8px;align-items:center;margin-bottom:8px;}
+  .phase-edit-head .pName{flex:1;font-weight:700;}
+  .phase-timer{display:flex;align-items:center;gap:6px;flex:0 0 auto;}
+  .phase-timer input{width:64px;text-align:center;}
+  .phase-timer span{color:var(--muted);font-size:13px;}
+  .phase-actions{display:flex;gap:8px;margin-top:8px;}
+  .phase-actions button{flex:0 0 auto;}
+  .phase-actions .phase-del{margin-left:auto;color:var(--red);}
+
   /* in-game status: team color band + avatar + phase progress */
   .gstatus{margin-bottom:16px;}
   .gstatus-band{display:flex;align-items:center;gap:12px;border-radius:16px;padding:12px 14px;border:2px solid;}
@@ -221,12 +238,15 @@
 "use strict";
 const KEY = "zettel-game-state-v1";
 
-const SUBPHASES = [
-  {name:"Erklären",  desc:"Beschreibe das Wort mit Worten – aber sag niemals das Wort selbst (oder Teile davon)."},
-  {name:"Pantomime", desc:"Nur Körper, Gestik & Mimik – kein einziger Ton!"},
-  {name:"Ein Wort",  desc:"Du darfst nur ein einziges Wort als Hinweis sagen."},
-  {name:"Ein Ton",   desc:"Nur ein Geräusch oder Laut – keine echten Wörter."},
+// the default rounds; users can rename / reorder / add / delete these in the lobby
+const DEFAULT_PHASES = [
+  {name:"Erklären",  desc:"Beschreibe das Wort mit Worten – aber sag niemals das Wort selbst (oder Teile davon).", timer:40},
+  {name:"Pantomime", desc:"Nur Körper, Gestik & Mimik – kein einziger Ton!", timer:40},
+  {name:"Ein Wort",  desc:"Du darfst nur ein einziges Wort als Hinweis sagen.", timer:20},
+  {name:"Ein Ton",   desc:"Nur ein Geräusch oder Laut – keine echten Wörter.", timer:40},
 ];
+function defaultPhases(){ return JSON.parse(JSON.stringify(DEFAULT_PHASES)); }
+function phases(){ return state.settings.phases; }
 
 let state = freshState();
 let timerId = null;
@@ -234,7 +254,7 @@ let timerId = null;
 function freshState(){
   return {
     screen:"lobby",
-    settings:{ timers:[40,40,40,40], wordsPerPlayer:5 },   // one timer per subphase
+    settings:{ phases:defaultPhases(), wordsPerPlayer:5 },   // each phase carries its own timer (s)
     players:[],          // {name, words:[]}
     teams:null,          // [{name,color,order:[names],pointer,score}]
     game:null,
@@ -257,12 +277,23 @@ function load(){
     const s = JSON.parse(raw);
     if(!s || !s.screen) return false;
     state = s; state.err = "";
-    // migrate older saves: single timerSeconds -> per-subphase timers array
+    // migrate older saves: timerSeconds / timers[] -> editable phases[] with per-phase timer
     if(!state.settings) state.settings = {};
-    if(!Array.isArray(state.settings.timers)){
-      const v = state.settings.timerSeconds || 40;
-      state.settings.timers = [v,v,v,v];
+    if(!Array.isArray(state.settings.phases)){
+      const old = Array.isArray(state.settings.timers)
+        ? state.settings.timers
+        : [ (state.settings.timerSeconds||40) ];
+      state.settings.phases = DEFAULT_PHASES.map((p,i)=>({
+        name:p.name, desc:p.desc, timer: Number(old[i]) || p.timer
+      }));
     }
+    // ensure every phase is well-formed
+    state.settings.phases = state.settings.phases.map(p=>({
+      name: (p && p.name) || "Phase",
+      desc: (p && p.desc) || "",
+      timer: Math.min(180, Math.max(5, Number(p && p.timer) || 40))
+    }));
+    delete state.settings.timers;
     delete state.settings.timerSeconds;
     if(!state.settings.wordsPerPlayer) state.settings.wordsPerPlayer = 5;
     // recover from a reload mid-turn: restart the turn cleanly
@@ -360,17 +391,14 @@ function renderLobby(){
       <h2>Einstellungen</h2>
       <label>Wörter pro Spieler</label>
       <input type="number" id="setWords" min="1" max="12" value="${s.wordsPerPlayer}" inputmode="numeric" />
+    </div>
+
+    <div class="panel">
+      <h2>Phasen <span class="pill">${s.phases.length}</span></h2>
+      <p class="hint" style="margin:0 0 12px;">Runden umbenennen, Hinweistext & Timer anpassen, sortieren oder löschen.</p>
+      <div id="phaseList">${s.phases.map((p,i)=>phaseEditor(p,i,s.phases.length)).join("")}</div>
       <div class="spacer"></div>
-      <h3>Timer pro Phase (Sekunden)</h3>
-      <div class="row">
-        <div><label>${SUBPHASES[0].name}</label><input type="number" id="t0" min="5" max="180" value="${s.timers[0]}" inputmode="numeric" /></div>
-        <div><label>${SUBPHASES[1].name}</label><input type="number" id="t1" min="5" max="180" value="${s.timers[1]}" inputmode="numeric" /></div>
-      </div>
-      <div class="spacer"></div>
-      <div class="row">
-        <div><label>${SUBPHASES[2].name}</label><input type="number" id="t2" min="5" max="180" value="${s.timers[2]}" inputmode="numeric" /></div>
-        <div><label>${SUBPHASES[3].name}</label><input type="number" id="t3" min="5" max="180" value="${s.timers[3]}" inputmode="numeric" /></div>
-      </div>
+      <button class="btn-ghost" onclick="addPhase()">+ Phase hinzufügen</button>
     </div>
 
     <div class="panel">
@@ -387,16 +415,68 @@ function renderLobby(){
   `;
 
   // keep settings in sync live
-  [0,1,2,3].forEach(i=>{
-    app.querySelector("#t"+i).addEventListener("change", e=>{
-      let v = parseInt(e.target.value,10); if(isNaN(v)) v=40; v=Math.min(180,Math.max(5,v));
-      state.settings.timers[i] = v; e.target.value=v; save();
-    });
-  });
   app.querySelector("#setWords").addEventListener("change", e=>{
     let v = parseInt(e.target.value,10); if(isNaN(v)) v=5; v=Math.min(12,Math.max(1,v));
     state.settings.wordsPerPlayer = v; e.target.value=v; save();
   });
+  wirePhaseEditors(app);
+}
+
+/* ----- phase editor (lobby) ----- */
+function phaseEditor(p, i, n){
+  return `
+    <div class="phase-edit">
+      <div class="phase-edit-head">
+        <input type="text" class="pName" data-i="${i}" value="${esc(p.name)}" maxlength="22" placeholder="Phasenname" aria-label="Phasenname" />
+        <div class="phase-timer">
+          <input type="number" class="pTimer" data-i="${i}" value="${p.timer}" min="5" max="180" inputmode="numeric" aria-label="Timer in Sekunden" />
+          <span>s</span>
+        </div>
+      </div>
+      <textarea class="pDesc" data-i="${i}" rows="2" maxlength="160" placeholder="Hinweis für die Runde (optional)" aria-label="Hinweistext">${esc(p.desc)}</textarea>
+      <div class="phase-actions">
+        <button class="btn-ghost btn-sm" onclick="movePhase(${i},-1)" ${i===0?"disabled":""} title="Nach oben">↑</button>
+        <button class="btn-ghost btn-sm" onclick="movePhase(${i},1)" ${i===n-1?"disabled":""} title="Nach unten">↓</button>
+        <button class="btn-ghost btn-sm phase-del" onclick="deletePhase(${i})" ${n<=1?"disabled":""} title="Phase löschen">Löschen ✕</button>
+      </div>
+    </div>`;
+}
+function wirePhaseEditors(app){
+  app.querySelectorAll(".pName").forEach(inp=>{
+    inp.addEventListener("input", e=>{ phases()[+inp.dataset.i].name = e.target.value; });
+    inp.addEventListener("blur", e=>{
+      const ph = phases()[+inp.dataset.i];
+      if(!ph.name.trim()){ ph.name = "Phase"; e.target.value = ph.name; }
+      else ph.name = ph.name.trim();
+      save();
+    });
+  });
+  app.querySelectorAll(".pDesc").forEach(t=>{
+    t.addEventListener("input", e=>{ phases()[+t.dataset.i].desc = e.target.value; });
+    t.addEventListener("blur", ()=>save());
+  });
+  app.querySelectorAll(".pTimer").forEach(inp=>{
+    inp.addEventListener("change", e=>{
+      let v = parseInt(e.target.value,10); if(isNaN(v)) v=40; v=Math.min(180,Math.max(5,v));
+      phases()[+inp.dataset.i].timer = v; e.target.value = v; save();
+    });
+  });
+}
+function addPhase(){
+  phases().push({ name:"Neue Phase", desc:"", timer:40 });
+  save(); render();
+}
+function deletePhase(i){
+  if(phases().length <= 1) return;   // keep at least one round
+  phases().splice(i,1);
+  save(); render();
+}
+function movePhase(i, dir){
+  const arr = phases();
+  const j = i + dir;
+  if(j < 0 || j >= arr.length) return;
+  [arr[i], arr[j]] = [arr[j], arr[i]];
+  save(); render();
 }
 function removePlayer(i){ state.players.splice(i,1); save(); render(); }
 function goAddPlayer(){ state.screen="addPlayer"; state.err=""; save(); render(); }
@@ -404,7 +484,7 @@ function goAddPlayer(){ state.screen="addPlayer"; state.err=""; save(); render()
 // quick test setup: 4 players x 3 words, 3 words/player, 5s timer
 function loadTestData(){
   state.settings.wordsPerPlayer = 3;
-  state.settings.timers = [5,5,5,5];
+  state.settings.phases = defaultPhases().map(p=>({ ...p, timer:5 }));
   const w = ["Apfel","Banane","Kaktus","Drache","Eimer","Fahrrad","Gitarre","Hammer","Igel","Jacke","Kerze","Lampe"];
   const names = ["Anna","Ben","Clara","David"];
   state.players = names.map((name,i)=>({ name, words: w.slice(i*3, i*3+3) }));
@@ -777,7 +857,7 @@ function startGame(){
     currentWord:null,
     guessedThisTurn:[],
     turnStartPool:[],
-    timeLeft: state.settings.timers[0],
+    timeLeft: phases()[0].timer,
     phase:"ready"
   };
   state.screen = "game";
@@ -786,7 +866,7 @@ function startGame(){
 
 function curTeam(){ return state.teams[state.game.currentTeamIndex]; }
 function activePlayer(){ const t=curTeam(); return t.order[t.pointer]; }
-function currentTimer(){ return state.settings.timers[state.game.subphaseIndex] || 40; }
+function currentTimer(){ const p = phases()[state.game.subphaseIndex]; return (p && p.timer) || 40; }
 
 function renderGame(){
   const g = state.game;
@@ -803,7 +883,7 @@ function gameStatusbar(){
   const cc  = t.color==="blue"?"c-blue":"c-red";
   const player = activePlayer();
   const initial = esc(((player||"?").trim().charAt(0) || "?").toUpperCase());
-  const dots = SUBPHASES.map((_,i)=>`<i class="${i<=g.subphaseIndex?'on':''}"></i>`).join("");
+  const dots = phases().map((_,i)=>`<i class="${i<=g.subphaseIndex?'on':''}"></i>`).join("");
   return `
     <div class="gstatus">
       <div class="gstatus-band ${cls}">
@@ -814,7 +894,7 @@ function gameStatusbar(){
         </div>
       </div>
       <div class="gstatus-phase">
-        <span class="gphase-label">Runde ${g.subphaseIndex+1}/${SUBPHASES.length} · ${esc(SUBPHASES[g.subphaseIndex].name)}</span>
+        <span class="gphase-label">Runde ${g.subphaseIndex+1}/${phases().length} · ${esc(phases()[g.subphaseIndex].name)}</span>
         <span class="dots">${dots}</span>
       </div>
     </div>`;
@@ -824,7 +904,7 @@ function gameStatusbar(){
 function renderReady(){
   const g = state.game;
   const t = curTeam();
-  const sp = SUBPHASES[g.subphaseIndex];
+  const sp = phases()[g.subphaseIndex];
   const accent = t.color==="blue"?"btn-blue":"btn-red";
   const cc = t.color==="blue"?"c-blue":"c-red";
   const app = document.getElementById("app");
@@ -956,7 +1036,7 @@ function renderTurnResult(){
     <button class="btn-blue" onclick="nextTurn()">
       ${poolEmpty ? "Runde ausgewertet – weiter" : "Weiter zum nächsten Team"}
     </button>
-    ${poolEmpty?"":`<p class="small-note">Noch ${g.pool.length} Wörter in der Runde „${esc(SUBPHASES[g.subphaseIndex].name)}“.</p>`}
+    ${poolEmpty?"":`<p class="small-note">Noch ${g.pool.length} Wörter in der Runde „${esc(phases()[g.subphaseIndex].name)}“.</p>`}
   `;
 }
 // put a wrongly-counted word back into the pool and revoke its point
@@ -982,17 +1062,17 @@ function nextTurn(){
 /* ----- subphase finished ----- */
 function renderSubphaseDone(){
   const g = state.game;
-  const last = g.subphaseIndex >= SUBPHASES.length-1;
+  const last = g.subphaseIndex >= phases().length-1;
   const app = document.getElementById("app");
   if(last){
     state.screen = "final";
     save(); return render();
   }
-  const next = SUBPHASES[g.subphaseIndex+1];
+  const next = phases()[g.subphaseIndex+1];
   app.innerHTML = `
     ${header()}
     <div class="confetti">🎉</div>
-    <h2 class="center">Runde „${esc(SUBPHASES[g.subphaseIndex].name)}“ geschafft!</h2>
+    <h2 class="center">Runde „${esc(phases()[g.subphaseIndex].name)}“ geschafft!</h2>
     ${scoreBoard()}
     <div class="panel">
       <h3>Nächste Runde</h3>
@@ -1086,6 +1166,7 @@ function render(){
 Object.assign(window,{
   confirmReset, removePlayer, goAddPlayer, cancelAdd, savePlayer, loadTestData,
   goEditWords, removeWord, addWord, finishEditWords,
+  addPhase, deletePhase, movePhase,
   createTeams, startGame, startTurn, guessed, skipWord, nextTurn,
   nextSubphase, undoGuess
 });
