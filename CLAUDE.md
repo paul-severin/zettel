@@ -17,7 +17,7 @@ Designed for a single phone passed around the group.
   In `game`, `state.game.phase` is `ready` / `playing` / `turnResult` / `subphaseDone`.
 - Inline `onclick` handlers must be exposed on `window` (see the `Object.assign(window, …)`
   block near the bottom).
-- Rounds ("phases") live in `state.settings.phases` (`{name, desc, timer}`), seeded from
+- Rounds ("phases") live in `state.settings.phases` (`{name, timer}`), seeded from
   `DEFAULT_PHASES` and editable in the lobby (rename / reorder / add / delete). Access via
   the `phases()` helper. Words come from `allWords()` (all players' words).
 
