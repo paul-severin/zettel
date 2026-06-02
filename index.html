@@ -149,13 +149,19 @@
   .word-edit-row{display:flex;gap:8px;align-items:center;margin-bottom:4px;}
   .word-edit-row input{flex:1;}
 
-  /* phase editor */
-  textarea{
-    width:100%;background:var(--bg);border:1px solid var(--line);border-radius:12px;
-    color:var(--text);font-family:inherit;font-size:15px;padding:11px 12px;outline:none;resize:vertical;
-    transition:border-color .15s,box-shadow .15s;
+  /* collapsible phase config */
+  .phase-panel{padding:0;}
+  .phase-panel summary{
+    list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;
+    font-size:18px;font-weight:700;padding:18px;
   }
-  textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(47,123,255,.18);}
+  .phase-panel summary::-webkit-details-marker{display:none;}
+  .phase-panel summary .chev{margin-left:auto;color:var(--muted);transition:transform .2s ease;font-size:14px;}
+  .phase-panel[open] summary .chev{transform:rotate(90deg);}
+  .phase-panel[open] summary{padding-bottom:0;}
+  .phase-panel>*:not(summary){margin-left:18px;margin-right:18px;}
+  .phase-panel>*:last-child{margin-bottom:18px;}
+  /* phase editor */
   .phase-edit{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:10px;}
   .phase-edit-head{display:flex;gap:8px;align-items:center;margin-bottom:8px;}
   .phase-edit-head .pName{flex:1;font-weight:700;}
@@ -166,16 +172,15 @@
   .phase-actions button{flex:0 0 auto;}
   .phase-actions .phase-del{margin-left:auto;color:var(--red);}
 
-  /* in-game status: team color band + avatar + phase progress */
-  .gstatus{margin-bottom:16px;}
-  .gstatus-band{display:flex;align-items:center;gap:12px;border-radius:16px;padding:12px 14px;border:2px solid;}
-  .avatar{
-    width:46px;height:46px;border-radius:50%;flex:0 0 auto;display:flex;align-items:center;justify-content:center;
-    font-weight:800;font-size:21px;background:rgba(0,0,0,.32);border:2px solid currentColor;
+  /* in-game status: team-coloured frame + phase progress */
+  .gstatus{margin:24px 0 26px;}
+  /* border-width/style only (no shorthand) so the team colour from .team-blue/.team-red wins */
+  .gstatus-band{
+    display:flex;flex-direction:column;align-items:center;text-align:center;gap:3px;
+    border-radius:16px;padding:16px 18px;border-width:2px;border-style:solid;
   }
-  .gstatus-who{min-width:0;}
-  .gstatus-name{font-size:22px;font-weight:800;line-height:1.12;word-break:break-word;}
-  .gstatus-team{font-size:13px;font-weight:700;margin-top:2px;}
+  .gstatus-team{font-size:14px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;}
+  .gstatus-name{font-size:26px;font-weight:800;line-height:1.15;word-break:break-word;}
   .gstatus-phase{
     display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px;
     padding:8px 14px;background:var(--panel2);border:1px solid var(--line);border-radius:999px;
@@ -240,16 +245,17 @@ const KEY = "zettel-game-state-v1";
 
 // the default rounds; users can rename / reorder / add / delete these in the lobby
 const DEFAULT_PHASES = [
-  {name:"Erklären",  desc:"Beschreibe das Wort mit Worten – aber sag niemals das Wort selbst (oder Teile davon).", timer:40},
-  {name:"Pantomime", desc:"Nur Körper, Gestik & Mimik – kein einziger Ton!", timer:40},
-  {name:"Ein Wort",  desc:"Du darfst nur ein einziges Wort als Hinweis sagen.", timer:20},
-  {name:"Ein Ton",   desc:"Nur ein Geräusch oder Laut – keine echten Wörter.", timer:40},
+  {name:"Erklären",  timer:40},
+  {name:"Pantomime", timer:40},
+  {name:"Ein Wort",  timer:20},
+  {name:"Ein Ton",   timer:40},
 ];
 function defaultPhases(){ return JSON.parse(JSON.stringify(DEFAULT_PHASES)); }
 function phases(){ return state.settings.phases; }
 
 let state = freshState();
 let timerId = null;
+let phasesOpen = false;   // lobby: is the collapsible phase config expanded
 
 function freshState(){
   return {
@@ -284,13 +290,12 @@ function load(){
         ? state.settings.timers
         : [ (state.settings.timerSeconds||40) ];
       state.settings.phases = DEFAULT_PHASES.map((p,i)=>({
-        name:p.name, desc:p.desc, timer: Number(old[i]) || p.timer
+        name:p.name, timer: Number(old[i]) || p.timer
       }));
     }
-    // ensure every phase is well-formed
+    // ensure every phase is well-formed (legacy description is dropped)
     state.settings.phases = state.settings.phases.map(p=>({
       name: (p && p.name) || "Phase",
-      desc: (p && p.desc) || "",
       timer: Math.min(180, Math.max(5, Number(p && p.timer) || 40))
     }));
     delete state.settings.timers;
@@ -393,13 +398,13 @@ function renderLobby(){
       <input type="number" id="setWords" min="1" max="12" value="${s.wordsPerPlayer}" inputmode="numeric" />
     </div>
 
-    <div class="panel">
-      <h2>Phasen <span class="pill">${s.phases.length}</span></h2>
-      <p class="hint" style="margin:0 0 12px;">Runden umbenennen, Hinweistext & Timer anpassen, sortieren oder löschen.</p>
+    <details class="panel phase-panel" id="phasePanel" ${phasesOpen?"open":""}>
+      <summary><span class="sum-title">Phasen</span> <span class="pill">${s.phases.length}</span><span class="chev">▸</span></summary>
+      <p class="hint" style="margin:10px 0 12px;">Runden umbenennen, Timer anpassen, sortieren oder löschen.</p>
       <div id="phaseList">${s.phases.map((p,i)=>phaseEditor(p,i,s.phases.length)).join("")}</div>
       <div class="spacer"></div>
       <button class="btn-ghost" onclick="addPhase()">+ Phase hinzufügen</button>
-    </div>
+    </details>
 
     <div class="panel">
       <h2>Spieler <span class="pill">${state.players.length}</span></h2>
@@ -409,7 +414,7 @@ function renderLobby(){
       ${state.players.length?`<div class="spacer"></div><button class="btn-ghost" onclick="goEditWords()">Wörter ansehen &amp; bearbeiten (${allWords().length})</button>`:""}
     </div>
 
-    <button class="btn-red" onclick="createTeams()" ${canTeams?"":"disabled"}>Teams erstellen</button>
+    <button class="btn-green" onclick="createTeams()" ${canTeams?"":"disabled"}>Teams erstellen</button>
     ${canTeams?"":`<p class="small-note">Mindestens ${minPlayers} Spieler nötig (2 pro Team).</p>`}
     <button class="testbtn" onclick="loadTestData()">🧪 Testdaten (4 Spieler, 3 Wörter, Timer 5s)</button>
   `;
@@ -420,6 +425,8 @@ function renderLobby(){
     state.settings.wordsPerPlayer = v; e.target.value=v; save();
   });
   wirePhaseEditors(app);
+  const pp = app.querySelector("#phasePanel");
+  if(pp) pp.addEventListener("toggle", ()=>{ phasesOpen = pp.open; });
 }
 
 /* ----- phase editor (lobby) ----- */
@@ -433,7 +440,6 @@ function phaseEditor(p, i, n){
           <span>s</span>
         </div>
       </div>
-      <textarea class="pDesc" data-i="${i}" rows="2" maxlength="160" placeholder="Hinweis für die Runde (optional)" aria-label="Hinweistext">${esc(p.desc)}</textarea>
       <div class="phase-actions">
         <button class="btn-ghost btn-sm" onclick="movePhase(${i},-1)" ${i===0?"disabled":""} title="Nach oben">↑</button>
         <button class="btn-ghost btn-sm" onclick="movePhase(${i},1)" ${i===n-1?"disabled":""} title="Nach unten">↓</button>
@@ -451,10 +457,6 @@ function wirePhaseEditors(app){
       save();
     });
   });
-  app.querySelectorAll(".pDesc").forEach(t=>{
-    t.addEventListener("input", e=>{ phases()[+t.dataset.i].desc = e.target.value; });
-    t.addEventListener("blur", ()=>save());
-  });
   app.querySelectorAll(".pTimer").forEach(inp=>{
     inp.addEventListener("change", e=>{
       let v = parseInt(e.target.value,10); if(isNaN(v)) v=40; v=Math.min(180,Math.max(5,v));
@@ -463,7 +465,7 @@ function wirePhaseEditors(app){
   });
 }
 function addPhase(){
-  phases().push({ name:"Neue Phase", desc:"", timer:40 });
+  phases().push({ name:"Neue Phase", timer:40 });
   save(); render();
 }
 function deletePhase(i){
@@ -882,16 +884,12 @@ function gameStatusbar(){
   const cls = t.color==="blue"?"team-blue":"team-red";
   const cc  = t.color==="blue"?"c-blue":"c-red";
   const player = activePlayer();
-  const initial = esc(((player||"?").trim().charAt(0) || "?").toUpperCase());
   const dots = phases().map((_,i)=>`<i class="${i<=g.subphaseIndex?'on':''}"></i>`).join("");
   return `
     <div class="gstatus">
       <div class="gstatus-band ${cls}">
-        <div class="avatar ${cc}">${initial}</div>
-        <div class="gstatus-who">
-          <div class="gstatus-name">${esc(player)} 🎤</div>
-          <div class="gstatus-team ${cc}">${esc(t.name)}</div>
-        </div>
+        <div class="gstatus-team ${cc}">${esc(t.name)}</div>
+        <div class="gstatus-name">${esc(player)} 🎤</div>
       </div>
       <div class="gstatus-phase">
         <span class="gphase-label">Runde ${g.subphaseIndex+1}/${phases().length} · ${esc(phases()[g.subphaseIndex].name)}</span>
@@ -903,10 +901,7 @@ function gameStatusbar(){
 /* ----- ready (pass the phone) ----- */
 function renderReady(){
   const g = state.game;
-  const t = curTeam();
   const sp = phases()[g.subphaseIndex];
-  const accent = t.color==="blue"?"btn-blue":"btn-red";
-  const cc = t.color==="blue"?"c-blue":"c-red";
   const app = document.getElementById("app");
   app.innerHTML = `
     ${header()}
@@ -914,9 +909,8 @@ function renderReady(){
     <div class="panel">
       <div class="ready-box">
         <h3>Runde: ${esc(sp.name)}</h3>
-        <p class="hint">${esc(sp.desc)}</p>
       </div>
-      <button class="${accent}" onclick="startTurn()">Start (${currentTimer()}s)</button>
+      <button class="btn-green" onclick="startTurn()">Start (${currentTimer()}s)</button>
       <p class="small-note">Gib das Handy an ${esc(activePlayer())}. Erst dann auf Start tippen!</p>
     </div>
     ${miniScore()}
@@ -1033,7 +1027,7 @@ function renderTurnResult(){
       ${wordsHtml}
     </div>
     ${scoreBoard()}
-    <button class="btn-blue" onclick="nextTurn()">
+    <button class="btn-green" onclick="nextTurn()">
       ${poolEmpty ? "Runde ausgewertet – weiter" : "Weiter zum nächsten Team"}
     </button>
     ${poolEmpty?"":`<p class="small-note">Noch ${g.pool.length} Wörter in der Runde „${esc(phases()[g.subphaseIndex].name)}“.</p>`}
@@ -1077,7 +1071,6 @@ function renderSubphaseDone(){
     <div class="panel">
       <h3>Nächste Runde</h3>
       <div class="center" style="font-size:24px;font-weight:800;margin:4px 0;">${esc(next.name)}</div>
-      <p class="hint center">${esc(next.desc)}</p>
       <p class="hint center" style="margin-top:8px;">Alle Wörter kommen wieder in den Topf.</p>
     </div>
     <button class="btn-green" onclick="nextSubphase()">Weiter zu „${esc(next.name)}“</button>
@@ -1146,7 +1139,7 @@ function renderFinal(){
     <div class="winner">${esc(title)}</div>
     <p class="center hint" style="margin-bottom:16px;">${sub}</p>
     ${scoreBoard()}
-    <button class="btn-blue" onclick="confirmReset()">Neues Spiel</button>
+    <button class="btn-green" onclick="confirmReset()">Neues Spiel</button>
   `;
 }
 
